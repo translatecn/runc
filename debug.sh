@@ -1,6 +1,5 @@
 source /etc/profile
 
-
 cp -rf /Users/acejilam/Desktop/runc/runc /usr/bin/runc
 
 pkill -9 containerd

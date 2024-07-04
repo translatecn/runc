@@ -2032,12 +2032,6 @@ func (c *linuxContainer) shouldSendMountSources() bool {
 // in bootstrapData can distinguish intentional panics.
 type netlinkError struct{ error }
 
-// bootstrapData encodes the necessary data in netlink binary format
-// as a io.Reader.
-// Consumer can write the data to a bootstrap program
-// such as one that uses nsenter package to bootstrap the container's
-// init process correctly, i.e. with correct namespaces, uid/gid
-// mapping etc.
 // 将必要的数据以 netlink 二进制格式编码为io.Reader。 Netlink为内核与用户空间进程之间的通信定义了一套标准的消息和处理机制
 // 消费者可以将数据写入引导程序，例如使用nsenter包正确引导容器的init进程，即使用正确的命名空间，uid/gid映射等。
 func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.NamespaceType]string, it initType) (_ io.Reader, Err error) {

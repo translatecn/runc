@@ -26,6 +26,15 @@ fexecve是glibc的一个函数，是在版本2.3.2之后才有的
 
 
 
-[//]: # (clone和fork的区别)
+# (clone和fork的区别)
 （1）clone和fork的调用方式很不相同，clone调用需要传入一个函数，该函数在子进程中执行。
 （2）clone和fork最大不同在于clone不再复制父进程的栈空间，而是自己创建一个新的。 （void *child_stack,）也就是第二个参数，需要分配栈指针的空间大小，所以它不再是继承或者复制，而是全新的创造。
+
+
+
+
+prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) 使进程不可转储
+prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) 使进程可转储
+
+
+ 

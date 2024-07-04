@@ -84,9 +84,9 @@ struct nlconfig_t {
 
     /* Rootless container settings. */
     uint8_t is_rootless_euid; /* boolean */
-    char *uidmappath;
+    char *uidmappath;// 二进制文件的路径
     size_t uidmappath_len;
-    char *gidmappath;
+    char *gidmappath;// 二进制文件的路径
     size_t gidmappath_len;
 
     /* Mount sources opened outside the container userns. */
@@ -146,9 +146,6 @@ int setns(int fd, int nstype) {
 }
 #endif
 
-
-
-
 static void write_log(int level, const char *format, ...) {
     char *message = NULL, *stage = NULL, *json = NULL;
     va_list args;
@@ -171,8 +168,7 @@ static void write_log(int level, const char *format, ...) {
         stage = strdup("nsexec");
         if (stage == NULL)
             goto out;
-    }
-    else {
+    } else {
         ret = asprintf(&stage, "nsexec-%d", current_stage);
         if (ret < 0) {
             stage = NULL;
@@ -190,7 +186,7 @@ static void write_log(int level, const char *format, ...) {
      */
     ssize_t __attribute__((unused)) __res = write(logfd, json, ret);
 
-out:
+    out:
     free(message);
     free(stage);
     free(json);
@@ -230,7 +226,7 @@ static int write_file(char *data, size_t data_len, char *pathfmt, ...) {
         goto out;
     }
 
-out:
+    out:
     close(fd);
     return ret;
 }
@@ -255,6 +251,7 @@ static int getenv_int(const char *name) {
 
     return ret;
 }
+
 static void setup_logpipe(void) {
     int i;
 
@@ -304,7 +301,8 @@ static void update_setgroups(int pid, enum policy_t setgroup) {
     }
 }
 
-static int try_mapping_tool(const char *app, int pid, char *map, size_t map_len) {
+// ✅✅✅✅✅✅✅✅
+static int try_mapping_tool(const char *binpath, int pid, char *map, size_t map_len) {
     int child;
 
     /*
@@ -313,7 +311,7 @@ static int try_mapping_tool(const char *app, int pid, char *map, size_t map_len)
      * isn't a backup to this failing). This usually would be a configuration
      * or programming issue.
      */
-    if (!app)
+    if (!binpath)
         bail("mapping tool not present");
 
     child = fork();
@@ -321,6 +319,7 @@ static int try_mapping_tool(const char *app, int pid, char *map, size_t map_len)
         bail("failed to fork");
 
     if (!child) {
+        // 子进程
 #define MAX_ARGV 20
         char *argv[MAX_ARGV];
         char *envp[] = {NULL};
@@ -330,13 +329,11 @@ static int try_mapping_tool(const char *app, int pid, char *map, size_t map_len)
 
         snprintf(pid_fmt, 16, "%d", pid);
 
-        argv[argc++] = (char *)app;
+        argv[argc++] = (char *) binpath;
         argv[argc++] = pid_fmt;
-        /*
-         * Convert the map string into a list of argument that
-         * newuidmap/newgidmap can understand.
-         */
+        // newuidmap $(pidof runc:[1:CHILD]) ContainerID_0 ContainerID_1
 
+//        fmt.Sprintf("%d %d %d\n", im.ContainerID, im.HostID, im.Size)
         while (argc < MAX_ARGV) {
             if (*map == '\0') {
                 argv[argc++] = NULL;
@@ -347,13 +344,13 @@ static int try_mapping_tool(const char *app, int pid, char *map, size_t map_len)
             if (next == NULL)
                 break;
             *next++ = '\0';
-            map = next + strspn(next, "\n ");
+            map = next + strspn(next, "\n ");// 获取的 ContainerID
         }
 
-        execve(app, argv, envp);
+        execve(binpath, argv, envp);
         bail("failed to execv");
-    }
-    else {
+    } else {
+        // 当进程
         int status;
 
         while (true) {
@@ -370,7 +367,8 @@ static int try_mapping_tool(const char *app, int pid, char *map, size_t map_len)
     return -1;
 }
 
-static void update_uidmap(const char *path, int pid, char *map, size_t map_len) {
+// ✅✅✅✅✅✅✅✅
+static void update_uidmap(const char *binpath, int pid, char *map, size_t map_len) {
     if (map == NULL || map_len == 0)
         return;
 
@@ -378,12 +376,13 @@ static void update_uidmap(const char *path, int pid, char *map, size_t map_len) 
     if (write_file(map, map_len, "/proc/%d/uid_map", pid) < 0) {
         if (errno != EPERM)
             bail("failed to update /proc/%d/uid_map", pid);
-        write_log(DEBUG, "update /proc/%d/uid_map got -EPERM (trying %s)", pid, path);
-        if (try_mapping_tool(path, pid, map, map_len))
+        write_log(DEBUG, "update /proc/%d/uid_map got -EPERM (trying %s)", pid, binpath);
+        if (try_mapping_tool(binpath, pid, map, map_len))
             bail("failed to use newuid map on %d", pid);
     }
 }
 
+// ✅✅✅✅✅✅✅✅
 static void update_gidmap(const char *path, int pid, char *map, size_t map_len) {
     if (map == NULL || map_len == 0)
         return;
@@ -397,6 +396,7 @@ static void update_gidmap(const char *path, int pid, char *map, size_t map_len) 
             bail("failed to use newgid map on %d", pid);
     }
 }
+
 // ✅✅✅✅✅✅✅✅
 static void update_oom_score_adj(char *data, size_t len) {
     if (data == NULL || len == 0)
@@ -411,7 +411,7 @@ static void update_oom_score_adj(char *data, size_t len) {
 static int child_func(void *arg) __attribute__((noinline));
 
 static int child_func(void *arg) {
-    struct clone_t *ca = (struct clone_t *)arg;
+    struct clone_t *ca = (struct clone_t *) arg;
     longjmp(*ca->env, ca->jmpval);
 }
 
@@ -419,8 +419,8 @@ static int clone_parent(jmp_buf *env, int jmpval) __attribute__((noinline));
 
 static int clone_parent(jmp_buf *env, int jmpval) {
     struct clone_t ca = {
-        .env = env,
-        .jmpval = jmpval,
+            .env = env,
+            .jmpval = jmpval,
     };
     //    clone 函数它主要用于创建新的进程（也包括线程，因为线程是“特殊”的进程），调用成功后，返回子进程的 tid，如果失败，则返回 -1，并将错误码设置再 errno。
     //    clone 函数的第1个参数fn是一个函数指针；第2个参数child_stack是用于创建子进程的栈(注意需要将栈的高地址传入）；第3个参数flags，就是用于指定行为的参数了。
@@ -451,12 +451,13 @@ static int nsflag(char *name) {
 }
 
 static uint32_t readint32(char *buf) {
-    return *(uint32_t *)buf;
+    return *(uint32_t *) buf;
 }
 
 static uint8_t readint8(char *buf) {
-    return *(uint8_t *)buf;
+    return *(uint8_t *) buf;
 }
+
 // ✅✅✅✅✅✅✅✅
 static void nl_parse(int fd, struct nlconfig_t *config) {
     size_t len, size;
@@ -487,7 +488,7 @@ static void nl_parse(int fd, struct nlconfig_t *config) {
     /* Parse the netlink payload. */
     config->data = data;
     while (current < data + size) {
-        struct nlattr *nlattr = (struct nlattr *)current;
+        struct nlattr *nlattr = (struct nlattr *) current;
         size_t payload_len = nlattr->nla_len - NLA_HDRLEN;
 
         /* Advance to payload. */
@@ -539,6 +540,7 @@ static void nl_parse(int fd, struct nlconfig_t *config) {
         current += NLA_ALIGN(payload_len);
     }
 }
+
 // ✅✅✅✅✅✅✅✅
 void nl_free(struct nlconfig_t *config) {
     free(config->data);
@@ -666,7 +668,7 @@ void receive_fd(int sockfd, int new_fd) {
     if (fd_count != 1)
         bail("received control message from unix socket %d with too many fds: %d", sockfd, fd_count);
 
-    fd_payload = (int *)CMSG_DATA(cmsg);
+    fd_payload = (int *) CMSG_DATA(cmsg);
     ret = dup3(*fd_payload, new_fd, O_CLOEXEC);
     if (ret < 0)
         bail("cannot dup3 fd %d to %d", *fd_payload, new_fd);
@@ -678,6 +680,7 @@ void receive_fd(int sockfd, int new_fd) {
         bail("cannot close fd %d", *fd_payload);
 }
 
+// ✅✅✅✅✅✅✅✅
 void send_fd(int sockfd, int fd) {
     int bytes_written;
     struct msghdr msg = {};
@@ -748,6 +751,7 @@ void receive_mountsources(int sockfd) {
     }
 }
 
+// ✅✅✅✅✅✅✅✅
 void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mountsources_len) {
     char proc_path[PATH_MAX];
     int host_mntns_fd;
@@ -764,7 +768,7 @@ void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mount
     if (host_mntns_fd == -1)
         bail("failed to get current mount namespace");
 
-    if (snprintf(proc_path, PATH_MAX, "/proc/%d/ns/mnt", child) < 0)
+    if (snprintf(proc_path, PATH_MAX, "/proc/%d/ns/mnt", child) < 0) // runc:[0:PARENT]
         bail("failed to get mount namespace path");
 
     container_mntns_fd = open(proc_path, O_RDONLY | O_CLOEXEC);
@@ -805,13 +809,8 @@ void send_mountsources(int sockfd, pid_t child, char *mountsources, size_t mount
         bail("failed to close container mount namespace fd %d", container_mntns_fd);
 }
 
-void try_unshare(int flags, const char *msg) {
+void try_unshare(int flags, const char *msg) { // 创建独立的命名空间
     write_log(DEBUG, "unshare %s", msg);
-    /*
-     * Kernels prior to v4.3 may return EINVAL on unshare when another process
-     * reads runc's /proc/$PID/status or /proc/$PID/maps. To work around this,
-     * retry on EINVAL a few times.
-     */
     int retries = 5;
     for (; retries > 0; retries--) {
         if (unshare(flags) == 0) {
@@ -859,7 +858,7 @@ void nsexec(void) {
     // 但是，如果我们要加入的命名空间的数量是0，我们将不会切换到不同的安全上下文。因此，将我们自己设置为不可转储只会破坏一些东西(比如无根容器)，这是内核人员的建议。
     if (config.namespaces) { // 各个子系统应该创建的路径
         write_log(DEBUG, "set process as non-dumpable");
-        if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) < 0) // 设置进程的可转储状态
+        if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) < 0)
             bail("failed to set process as non-dumpable");
     }
 
@@ -879,7 +878,7 @@ void nsexec(void) {
             bool stage1_complete, stage2_complete;
 
             /* For debugging. */
-            prctl(PR_SET_NAME, (unsigned long)"runc:[0:PARENT]", 0, 0, 0); // 设置进程名，可以top 看到
+            prctl(PR_SET_NAME, (unsigned long) "runc:[0:PARENT]", 0, 0, 0); // 设置进程名，可以top 看到
             write_log(DEBUG, "~> nsexec stage-0");
 
             /* Start the process of getting a container. */
@@ -906,21 +905,11 @@ void nsexec(void) {
                 // 第一次发送 SYNC_USERMAP_PLS
 
                 switch (s) {
-                    case SYNC_USERMAP_PLS:
+                    case SYNC_USERMAP_PLS: // ✅
                         write_log(DEBUG, "stage-1 requested userns mappings");
-
-                        /*
-                         * Enable setgroups(2) if we've been asked to. But we also
-                         * have to explicitly disable setgroups(2) if we're
-                         * creating a rootless container for single-entry mapping.
-                         * i.e. config.is_setgroup == false.
-                         * (this is required since Linux 3.19).
-                         *
-                         * For rootless multi-entry mapping, config.is_setgroup shall be true
-                         * and newuidmap/newgidmap shall be used.
-                         */
-                        if (config.is_rootless_euid && !config.is_setgroup)
+                        if (config.is_rootless_euid && !config.is_setgroup) {
                             update_setgroups(stage1_pid, SETGROUPS_DENY);
+                        }
 
                         /* Set up mappings. */
                         update_uidmap(config.uidmappath, stage1_pid, config.uidmap, config.uidmap_len);
@@ -966,7 +955,7 @@ void nsexec(void) {
                             bail("failed to sync with runc: write(pid-JSON)");
                         }
                         break;
-                    case SYNC_MOUNTSOURCES_PLS:
+                    case SYNC_MOUNTSOURCES_PLS: // ✅
                         send_mountsources(syncfd, stage1_pid, config.mountsources, config.mountsources_len);
 
                         s = SYNC_MOUNTSOURCES_ACK;
@@ -1017,7 +1006,8 @@ void nsexec(void) {
             write_log(DEBUG, "<- stage-2 synchronisation loop");
             write_log(DEBUG, "<~ nsexec stage-0");
             exit(0);
-        } break;
+        }
+            break;
 
             /*
              * Stage 1: We're in the first child process. Our job is to join any
@@ -1038,7 +1028,7 @@ void nsexec(void) {
                 bail("failed to close sync_child_pipe[1] fd");
 
             /* For debugging. */
-            prctl(PR_SET_NAME, (unsigned long)"runc:[1:CHILD]", 0, 0, 0);
+            prctl(PR_SET_NAME, (unsigned long) "runc:[1:CHILD]", 0, 0, 0);
             write_log(DEBUG, "~> nsexec stage-1");
 
             // 我们需要先设置命名空间。我们不能更早地这样做（在阶段0），
@@ -1053,14 +1043,11 @@ void nsexec(void) {
                 try_unshare(CLONE_NEWUSER, "user namespace");
                 config.cloneflags &= ~CLONE_NEWUSER;
 
-                /*
-                 * We need to set ourselves as dumpable temporarily so that the
-                 * parent process can write to our procfs files.
-                 */
                 if (config.namespaces) {
                     write_log(DEBUG, "temporarily set process as dumpable");
-                    if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) < 0)
+                    if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) < 0) { // 使进程可转储
                         bail("failed to temporarily set process as dumpable");
+                    }
                 }
 
                 /*
@@ -1087,24 +1074,17 @@ void nsexec(void) {
                         bail("failed to re-set process as non-dumpable");
                 }
 
-                /* Become root in the namespace proper. */
+                //         在Linux系统中，每个进程都有三种不同的`uid`：真实用户ID（`uid`）、有效用户ID（`euid`）和保存的用户ID（`suid`）。
+                //         其中，真实用户ID是指进程的实际所有者；
+                //         有效用户ID是指用来控制进程权限的用户；
+                //         保存的用户ID是用来备份之前的`euid`。
                 if (setresuid(0, 0, 0) < 0)
                     bail("failed to become root in user namespace");
             }
 
-            /*
-             * Unshare all of the namespaces. Now, it should be noted that this
-             * ordering might break in the future (especially with rootless
-             * containers). But for now, it's not possible to split this into
-             * CLONE_NEWUSER + [the rest] because of some RHEL SELinux issues.
-             *
-             * Note that we don't merge this with clone() because there were
-             * some old kernel versions where clone(CLONE_PARENT | CLONE_NEWPID)
-             * was broken, so we'll just do it the long way anyway.
-             */
             try_unshare(config.cloneflags & ~CLONE_NEWCGROUP, "remaining namespaces (except cgroupns)");
 
-            /* Ask our parent to send the mount sources fds. */
+//             ✅
             if (config.mountsources) {
                 s = SYNC_MOUNTSOURCES_PLS;
                 if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
@@ -1172,7 +1152,8 @@ void nsexec(void) {
             /* Our work is done. [Stage 2: STAGE_INIT] is doing the rest of the work. */
             write_log(DEBUG, "<~ nsexec stage-1");
             exit(0);
-        } break;
+        }
+            break;
 
             /*
              * Stage 2: We're the final child process, and the only process that will
@@ -1196,7 +1177,7 @@ void nsexec(void) {
                 bail("failed to close sync_child_pipe[0] fd");
 
             /* For debugging. */
-            prctl(PR_SET_NAME, (unsigned long)"runc:[2:INIT]", 0, 0, 0);
+            prctl(PR_SET_NAME, (unsigned long) "runc:[2:INIT]", 0, 0, 0);
             write_log(DEBUG, "~> nsexec stage-2");
 
             if (read(syncfd, &s, sizeof(s)) != sizeof(s))
@@ -1238,7 +1219,8 @@ void nsexec(void) {
             write_log(DEBUG, "<= nsexec container setup");
             write_log(DEBUG, "booting up go runtime ...");
             return;
-        } break;
+        }
+            break;
         default:
             bail("unknown stage '%d' for jump value", current_stage);
     }

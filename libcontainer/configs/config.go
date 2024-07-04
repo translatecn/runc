@@ -19,7 +19,6 @@ type Rlimit struct {
 	Soft uint64 `json:"soft"`
 }
 
-// IDMap represents UID/GID Mappings for User Namespaces.
 type IDMap struct {
 	ContainerID int64 `json:"container_id"`
 	HostID      int64 `json:"host_id"`
@@ -158,11 +157,8 @@ type Config struct {
 	// More information about kernel oom score calculation here: https://lwn.net/Articles/317814/
 	OomScoreAdj *int `json:"oom_score_adj,omitempty"`
 
-	// UidMappings is an array of User ID mappings for User Namespaces
-	UidMappings []IDMap `json:"uid_mappings"`
-
-	// GidMappings is an array of Group ID mappings for User Namespaces
-	GidMappings []IDMap `json:"gid_mappings"`
+	UidMappings []IDMap `json:"uid_mappings"` //  user id 映射
+	GidMappings []IDMap `json:"gid_mappings"` //  group id 映射
 
 	// MaskPaths specifies paths within the container's rootfs to mask over with a bind
 	// mount pointing to /dev/null as to prevent reads of the file.
