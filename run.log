@@ -1,0 +1,995 @@
+mount -t tmpfs -oexec,nosuid,dev,noexec,nodev,suid  shm /run/containerd/io.containerd.grpc.v1.cri/sandboxes/6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e/shm mode=1777,size=67108864
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/350/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/350/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/1/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e/init.pid",
+    "6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e"
+  ]
+mount -t tmpfs -osuid,noexec,exec,nosuid,dev,nodev  shm /run/containerd/io.containerd.grpc.v1.cri/sandboxes/2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345/shm mode=1777,size=67108864
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/351/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/351/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/1/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345/init.pid",
+    "2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345"
+  ]
+mount -t tmpfs -onoexec,nosuid,nodev,exec,suid,dev  shm /run/containerd/io.containerd.grpc.v1.cri/sandboxes/75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b/shm mode=1777,size=67108864
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b
+mount -t tmpfs -odev,noexec,nodev,suid,nosuid,exec  shm /run/containerd/io.containerd.grpc.v1.cri/sandboxes/cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d/shm mode=1777,size=67108864
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/352/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/352/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/1/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b/init.pid",
+    "75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b"
+  ]
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "6216ba1f4453285b5002966fb0058695c0185d05103afc843d3458e17ad2e29e"
+  ]
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/353/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/353/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/1/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "2e243da7d4d06af0a6b9ab88bd4d3d4063ed7bd400e5f1d5641e3269ce7fe345"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d/init.pid",
+    "cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "cf8c5153a1d93ce80908b2b0e8d09aecd835cb3c954c72b08fe745ce604f710d"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "75b3f49b4708d25f875d0b72cc97800fbf4695fdd7213ecabda4f5075693379b"
+  ]
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/354/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/13/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/12/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/11/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/10/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/9/fs /var/lib/containerd/tmpmounts/containerd-mount1539340503
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/354/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/13/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/12/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/11/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/10/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/9/fs /var/lib/containerd/tmpmounts/containerd-mount785963958
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/355/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/4/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/2/fs /var/lib/containerd/tmpmounts/containerd-mount2430540785
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/355/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/4/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/2/fs /var/lib/containerd/tmpmounts/containerd-mount1436221788
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/354/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/354/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/13/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/12/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/11/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/10/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/9/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44/init.pid",
+    "050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44"
+  ]
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/355/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/355/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/4/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/2/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524/init.pid",
+    "34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524"
+  ]
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/356/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/6/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/2/fs /var/lib/containerd/tmpmounts/containerd-mount4186754134
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/356/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/6/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/2/fs /var/lib/containerd/tmpmounts/containerd-mount344364164
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/356/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/356/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/6/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/2/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0/init.pid",
+    "b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0"
+  ]
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/357/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/5/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/2/fs /var/lib/containerd/tmpmounts/containerd-mount3406668983
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/357/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/5/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/2/fs /var/lib/containerd/tmpmounts/containerd-mount212768525
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/357/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/357/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/5/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/3/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/2/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819/init.pid",
+    "da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "050660610c336ee072c18c423475e14fd824ed306fbc2a34aab0a7afef4e8c44"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "b93306516cd2659d4b102e5a734b029ad8ddeb575d22f26b048845dc98d2d2e0"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "da985f7a0a33209668201691f34f8272d1d976cdc163064cce467593744da819"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "34ff4f7966e5d6c8698c0a1c73f428ba07080e52b8b0194800e161ae57ebd524"
+  ]
+/runtime.v1.RuntimeService/UpdateRuntimeConfig         {
+    "Method": "/runtime.v1.RuntimeService/UpdateRuntimeConfig",
+    "Path": "new(sbserver._instrumentedService).UpdateRuntimeConfig",
+    "Request": {
+        "runtime_config": {
+            "network_config": {
+                "pod_cidr": "100.64.0.0/24"
+            }
+        }
+    },
+    "Response": {},
+    "Error": "",
+    "FullError": null
+}
+mount -t tmpfs -oexec,nosuid,dev,suid,noexec,nodev  shm /run/containerd/io.containerd.grpc.v1.cri/sandboxes/d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3/shm mode=1777,size=67108864
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/358/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/358/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/1/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3/init.pid",
+    "d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "d06e25a264c1e3ed74aef1c7fcdfc14f3fc3716044db1ffbc7385cdabfd512e3"
+  ]
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/359/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/29/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/28/fs /var/lib/containerd/tmpmounts/containerd-mount178285751
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/359/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/29/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/28/fs /var/lib/containerd/tmpmounts/containerd-mount3017396523
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/359/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/359/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/29/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/28/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa/init.pid",
+    "9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "kill",
+    "--all",
+    "9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa",
+    "9"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "delete",
+    "9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa"
+  ]
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa",
+    "-bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa",
+    "delete"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa/log.json",
+    "--log-format",
+    "json",
+    "delete",
+    "--force",
+    "9835d257894059e6def976355fac5182c48cc57bdbb297701b27098f25eed7fa"
+  ]
+mount -t tmpfs -osuid,dev,exec,nosuid,noexec,nodev  shm /run/containerd/io.containerd.grpc.v1.cri/sandboxes/dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6/shm mode=1777,size=67108864
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/360/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/360/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/1/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6/init.pid",
+    "dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "dc42f96f4c96a4bc087d97549c4e94982a24fc5f6d165dea0a4ecdea03e0e6c6"
+  ]
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/361/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/8/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/7/fs /var/lib/containerd/tmpmounts/containerd-mount4122588018
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/361/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/8/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/7/fs /var/lib/containerd/tmpmounts/containerd-mount981750317
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/361/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/361/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/8/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/7/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d/init.pid",
+    "60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "60d7cfd6eac601b2b6161726daf655270fd4c25e46ba8585fba7753ac6c3a92d"
+  ]
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/362/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/35/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/34/fs /var/lib/containerd/tmpmounts/containerd-mount1520795189
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/362/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/35/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/34/fs /var/lib/containerd/tmpmounts/containerd-mount1961017543
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/362/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/362/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/35/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/34/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868/init.pid",
+    "386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "kill",
+    "--all",
+    "386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868",
+    "9"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "delete",
+    "386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868"
+  ]
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868",
+    "-bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868",
+    "delete"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868/log.json",
+    "--log-format",
+    "json",
+    "delete",
+    "--force",
+    "386966a34d5a2f8c4e6720af97a317280a84cfc77c55ee62b6e6eb9e91d31868"
+  ]
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/363/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/45/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/44/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/43/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/42/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/41/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/40/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/39/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/38/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/37/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/34/fs /var/lib/containerd/tmpmounts/containerd-mount1213969250
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/363/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/45/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/44/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/43/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/42/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/41/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/40/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/39/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/38/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/37/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/34/fs /var/lib/containerd/tmpmounts/containerd-mount2011344804
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/363/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/363/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/45/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/44/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/43/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/42/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/41/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/40/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/39/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/38/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/37/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/34/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d/init.pid",
+    "091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "kill",
+    "--all",
+    "091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d",
+    "9"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "delete",
+    "091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d"
+  ]
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d",
+    "-bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d",
+    "delete"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d/log.json",
+    "--log-format",
+    "json",
+    "delete",
+    "--force",
+    "091f764e52a1133f589661fb3573cd59ca1dc8cf29562f41bd96bc4a28ee077d"
+  ]
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/364/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/45/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/44/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/43/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/42/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/41/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/40/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/39/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/38/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/37/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/34/fs /var/lib/containerd/tmpmounts/containerd-mount2107900296
+mount -t overlay overlay -o index=off,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/364/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/45/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/44/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/43/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/42/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/41/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/40/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/39/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/38/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/37/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/34/fs /var/lib/containerd/tmpmounts/containerd-mount927962419
+---------->ENV:          ["GOMAXPROCS=2","GRPC_ADDRESS=/run/containerd/containerd.sock","MAX_SHIM_VERSION=2","NAMESPACE=k8s.io","TTRPC_ADDRESS=/run/containerd/containerd.sock.ttrpc"]
+---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-address",
+    "/run/containerd/containerd.sock",
+    "-publish-binary",
+    "/usr/bin/containerd",
+    "-id",
+    "4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c",
+    "start"
+  ]
+---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c
+shim: ---------->Args:          [
+    "/usr/bin/containerd-shim-runc-v2",
+    "-namespace",
+    "k8s.io",
+    "-id",
+    "4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c",
+    "-address",
+    "/run/containerd/containerd.sock"
+  ]
+shim: ---------->Dir:          /run/containerd/io.containerd.runtime.v2.task/k8s.io/4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c
+mount -t overlay overlay -o index=off,workdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/364/work,upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/364/fs,lowerdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/45/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/44/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/43/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/42/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/41/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/40/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/39/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/38/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/37/fs:/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/34/fs /run/containerd/io.containerd.runtime.v2.task/k8s.io/4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c/rootfs
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "create",
+    "--bundle",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c",
+    "--pid-file",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c/init.pid",
+    "4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c"
+  ]
+========> runc  Args:          [
+    "runc",
+    "--root",
+    "/run/containerd/runc/k8s.io",
+    "--log",
+    "/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c/log.json",
+    "--log-format",
+    "json",
+    "--systemd-cgroup",
+    "start",
+    "4b8ac34257230c431815b915d18a2f04486d399ed19a2bee2f74c588e1111d8c"
+  ]

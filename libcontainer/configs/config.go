@@ -196,6 +196,7 @@ type Config struct {
 
 	// NoNewKeyring will not allocated a new session keyring for the container.  It will use the
 	// callers keyring in this case.
+	// 不会为容器分配新的会话密匙环。在这种情况下，它将使用调用者的密匙环。
 	NoNewKeyring bool `json:"no_new_keyring"`
 
 	// IntelRdt specifies settings for Intel RDT group that the container is placed into
@@ -361,17 +362,6 @@ type Command struct {
 	Timeout *time.Duration `json:"timeout"`
 }
 
-// NewCommandHook will execute the provided command when the hook is run.
-func NewCommandHook(cmd Command) CommandHook {
-	return CommandHook{
-		Command: cmd,
-	}
-}
-
-type CommandHook struct {
-	Command
-}
-
 func (c Command) Run(s *specs.State) error {
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -411,4 +401,15 @@ func (c Command) Run(s *specs.State) error {
 		<-errC
 		return fmt.Errorf("hook ran past specified timeout of %.1fs", c.Timeout.Seconds())
 	}
+}
+
+// NewCommandHook will execute the provided command when the hook is run.
+func NewCommandHook(cmd Command) CommandHook {
+	return CommandHook{
+		Command: cmd,
+	}
+}
+
+type CommandHook struct {
+	Command
 }

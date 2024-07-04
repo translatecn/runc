@@ -19,16 +19,6 @@ type WeightDevice struct {
 	LeafWeight uint16 `json:"leafWeight"`
 }
 
-// NewWeightDevice returns a configured WeightDevice pointer
-func NewWeightDevice(major, minor int64, weight, leafWeight uint16) *WeightDevice {
-	wd := &WeightDevice{}
-	wd.Major = major
-	wd.Minor = minor
-	wd.Weight = weight
-	wd.LeafWeight = leafWeight
-	return wd
-}
-
 // WeightString formats the struct to be writable to the cgroup specific file
 func (wd *WeightDevice) WeightString() string {
 	return fmt.Sprintf("%d:%d %d", wd.Major, wd.Minor, wd.Weight)
@@ -46,15 +36,6 @@ type ThrottleDevice struct {
 	Rate uint64 `json:"rate"`
 }
 
-// NewThrottleDevice returns a configured ThrottleDevice pointer
-func NewThrottleDevice(major, minor int64, rate uint64) *ThrottleDevice {
-	td := &ThrottleDevice{}
-	td.Major = major
-	td.Minor = minor
-	td.Rate = rate
-	return td
-}
-
 // String formats the struct to be writable to the cgroup specific file
 func (td *ThrottleDevice) String() string {
 	return fmt.Sprintf("%d:%d %d", td.Major, td.Minor, td.Rate)
@@ -63,4 +44,23 @@ func (td *ThrottleDevice) String() string {
 // StringName formats the struct to be writable to the cgroup specific file
 func (td *ThrottleDevice) StringName(name string) string {
 	return fmt.Sprintf("%d:%d %s=%d", td.Major, td.Minor, name, td.Rate)
+}
+
+// NewWeightDevice returns a configured WeightDevice pointer
+func NewWeightDevice(major, minor int64, weight, leafWeight uint16) *WeightDevice {
+	wd := &WeightDevice{}
+	wd.Major = major
+	wd.Minor = minor
+	wd.Weight = weight
+	wd.LeafWeight = leafWeight
+	return wd
+}
+
+// NewThrottleDevice returns a configured ThrottleDevice pointer
+func NewThrottleDevice(major, minor int64, rate uint64) *ThrottleDevice {
+	td := &ThrottleDevice{}
+	td.Major = major
+	td.Minor = minor
+	td.Rate = rate
+	return td
 }

@@ -1,4 +1,3 @@
-vendor/pkg
 /runc
 /runc-*
 contrib/cmd/recvtty/recvtty
@@ -8,3 +7,9 @@ man/man8
 release
 Vagrantfile
 .vagrant
+.idea
+runc
+libcontainer/nsenter/.idea
+libcontainer/nsenter/cmake-build-debug
+.DS_Store
+vendor

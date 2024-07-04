@@ -237,109 +237,6 @@ func genV2ResourcesProperties(r *configs.Resources, cm *dbusConnManager) ([]syst
 	return properties, nil
 }
 
-func (m *unifiedManager) Apply(pid int) error {
-	var (
-		c          = m.cgroups
-		unitName   = getUnitName(c)
-		properties []systemdDbus.Property
-	)
-
-	slice := "system.slice"
-	if m.cgroups.Rootless {
-		slice = "user.slice"
-	}
-	if c.Parent != "" {
-		slice = c.Parent
-	}
-
-	properties = append(properties, systemdDbus.PropDescription("libcontainer container "+c.Name))
-
-	if strings.HasSuffix(unitName, ".slice") {
-		// If we create a slice, the parent is defined via a Wants=.
-		properties = append(properties, systemdDbus.PropWants(slice))
-	} else {
-		// Otherwise it's a scope, which we put into a Slice=.
-		properties = append(properties, systemdDbus.PropSlice(slice))
-		// Assume scopes always support delegation (supported since systemd v218).
-		properties = append(properties, newProp("Delegate", true))
-	}
-
-	// only add pid if its valid, -1 is used w/ general slice creation.
-	if pid != -1 {
-		properties = append(properties, newProp("PIDs", []uint32{uint32(pid)}))
-	}
-
-	// Always enable accounting, this gets us the same behaviour as the fs implementation,
-	// plus the kernel has some problems with joining the memory cgroup at a later time.
-	properties = append(properties,
-		newProp("MemoryAccounting", true),
-		newProp("CPUAccounting", true),
-		newProp("IOAccounting", true),
-		newProp("TasksAccounting", true),
-	)
-
-	// Assume DefaultDependencies= will always work (the check for it was previously broken.)
-	properties = append(properties,
-		newProp("DefaultDependencies", false))
-
-	properties = append(properties, c.SystemdProps...)
-
-	if err := startUnit(m.dbus, unitName, properties, pid == -1); err != nil {
-		return fmt.Errorf("unable to start unit %q (properties %+v): %w", unitName, properties, err)
-	}
-
-	if err := fs2.CreateCgroupPath(m.path, m.cgroups); err != nil {
-		return err
-	}
-
-	if c.OwnerUID != nil {
-		// The directory itself must be chowned.
-		err := os.Chown(m.path, *c.OwnerUID, -1)
-		if err != nil {
-			return err
-		}
-
-		filesToChown, err := cgroupFilesToChown()
-		if err != nil {
-			return err
-		}
-
-		for _, v := range filesToChown {
-			err := os.Chown(m.path+"/"+v, *c.OwnerUID, -1)
-			// Some files might not be present.
-			if err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-// The kernel exposes a list of files that should be chowned to the delegate
-// uid in /sys/kernel/cgroup/delegate.  If the file is not present
-// (Linux < 4.15), use the initial values mentioned in cgroups(7).
-func cgroupFilesToChown() ([]string, error) {
-	const cgroupDelegateFile = "/sys/kernel/cgroup/delegate"
-
-	f, err := os.Open(cgroupDelegateFile)
-	if err != nil {
-		return []string{"cgroup.procs", "cgroup.subtree_control", "cgroup.threads"}, nil
-	}
-	defer f.Close()
-
-	filesToChown := []string{}
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		filesToChown = append(filesToChown, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading %s: %w", cgroupDelegateFile, err)
-	}
-
-	return filesToChown, nil
-}
-
 func (m *unifiedManager) Destroy() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -469,4 +366,104 @@ func (m *unifiedManager) Exists() bool {
 
 func (m *unifiedManager) OOMKillCount() (uint64, error) {
 	return m.fsMgr.OOMKillCount()
+}
+
+// The kernel exposes a list of files that should be chowned to the delegate
+// uid in /sys/kernel/cgroup/delegate.  If the file is not present
+// (Linux < 4.15), use the initial values mentioned in cgroups(7).
+func cgroupFilesToChown() ([]string, error) {
+	const cgroupDelegateFile = "/sys/kernel/cgroup/delegate"
+
+	f, err := os.Open(cgroupDelegateFile)
+	if err != nil {
+		return []string{"cgroup.procs", "cgroup.subtree_control", "cgroup.threads"}, nil
+	}
+	defer f.Close()
+
+	filesToChown := []string{}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		filesToChown = append(filesToChown, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading %s: %w", cgroupDelegateFile, err)
+	}
+
+	return filesToChown, nil
+}
+
+func (m *unifiedManager) Apply(pid int) error {
+	var (
+		c          = m.cgroups
+		unitName   = getUnitName(c)
+		properties []systemdDbus.Property
+	)
+
+	slice := "system.slice"
+	if m.cgroups.Rootless {
+		slice = "user.slice"
+	}
+	if c.Parent != "" {
+		slice = c.Parent
+	}
+	// 服务的说明描述
+	properties = append(properties, systemdDbus.PropDescription("libcontainer container "+c.Name))
+
+	if strings.HasSuffix(unitName, ".slice") {
+		// 与Requires相反，没有强制要求
+		properties = append(properties, systemdDbus.PropWants(slice))
+	} else {
+		// 指定服务的所属切片
+		properties = append(properties, systemdDbus.PropSlice(slice))
+		// 服务的管理权限将委托给服务运行所在的用户和组
+		properties = append(properties, newProp("Delegate", true))
+	}
+
+	if pid != -1 {
+		// 通常指的是服务的进程 ID
+		properties = append(properties, newProp("PIDs", []uint32{uint32(pid)}))
+	}
+
+	//始终启用记帐，这使我们获得与fs实现相同的行为，并且内核在稍后加入内存组时会遇到一些问题。
+	properties = append(properties,
+		newProp("MemoryAccounting", true), // 让 systemd 在服务运行时跟踪其内存使用情况
+		newProp("CPUAccounting", true),
+		newProp("IOAccounting", true),
+		newProp("TasksAccounting", true),
+	)
+
+	properties = append(properties, newProp("DefaultDependencies", false))
+
+	properties = append(properties, c.SystemdProps...)
+
+	if err := startUnit(m.dbus, unitName, properties, pid == -1); err != nil { // /usr/bin/runc init
+		return fmt.Errorf("unable to start unit %q (properties %+v): %w", unitName, properties, err)
+	}
+	// /sys/fs/cgroup/be.slice/cri-containerd-1d095d964a84afe3e53648554b32e484019c8d0d92f97439b3b4dc516ca41539.scope
+	if err := fs2.CreateCgroupPath(m.path, m.cgroups); err != nil {
+		return err
+	}
+
+	if c.OwnerUID != nil {
+		// The directory itself must be chowned.
+		err := os.Chown(m.path, *c.OwnerUID, -1)
+		if err != nil {
+			return err
+		}
+
+		filesToChown, err := cgroupFilesToChown()
+		if err != nil {
+			return err
+		}
+
+		for _, v := range filesToChown {
+			err := os.Chown(m.path+"/"+v, *c.OwnerUID, -1)
+			// Some files might not be present.
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+	}
+
+	return nil
 }

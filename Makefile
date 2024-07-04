@@ -7,13 +7,11 @@ MANDIR := $(PREFIX)/share/man
 
 GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
 GIT_BRANCH_CLEAN := $(shell echo $(GIT_BRANCH) | sed -e "s/[^[:alnum:]]/-/g")
-RUNC_IMAGE := runc_dev$(if $(GIT_BRANCH_CLEAN),:$(GIT_BRANCH_CLEAN))
+RUNC_IMAGE := registry.cn-hangzhou.aliyuncs.com/acejilam/runc_dev:v1.1.12
 PROJECT := github.com/opencontainers/runc
 BUILDTAGS ?= seccomp
 
 COMMIT ?= $(shell git describe --dirty --long --always)
-VERSION := $(shell cat ./VERSION)
-LDFLAGS_COMMON := -X main.gitCommit=$(COMMIT) -X main.version=$(VERSION)
 
 GOARCH := $(shell $(GO) env GOARCH)
 
@@ -71,15 +69,16 @@ static:
 releaseall: RELEASE_ARGS := "-a arm64 -a armel -a armhf -a ppc64le -a riscv64 -a s390x"
 releaseall: release
 
-release: runcimage
-	$(CONTAINER_ENGINE) run $(CONTAINER_ENGINE_RUN_FLAGS) \
+release:
+	$(CONTAINER_ENGINE) run --privileged $(CONTAINER_ENGINE_RUN_FLAGS) \
 		--rm -v $(CURDIR):/go/src/$(PROJECT) \
 		-e RELEASE_ARGS=$(RELEASE_ARGS) \
 		$(RUNC_IMAGE) make localrelease
-	script/release_sign.sh -S $(GPG_KEYID) -r release/$(VERSION) -v $(VERSION)
 
 localrelease: verify-changelog
-	script/release_build.sh -r release/$(VERSION) -v $(VERSION) $(RELEASE_ARGS)
+	#go build -trimpath -buildmode=pie -a -tags "seccomp netgo osusergo" -ldflags "-X main.gitCommit=d2aa0cf5-dirty -X main.version=1.1.12 -linkmode external -extldflags --static-pie -w -s -buildid=" -o runc .
+	go build -o runc .
+	#script/release_build.sh -r release/$(VERSION) -v $(VERSION) $(RELEASE_ARGS)
 
 dbuild: runcimage
 	$(CONTAINER_ENGINE) run $(CONTAINER_ENGINE_RUN_FLAGS) \

@@ -341,7 +341,7 @@ func (c *linuxContainer) start(process *Process) (retErr error) {
 		return fmt.Errorf("unable to create new parent process: %w", err)
 	}
 
-	logsDone := parent.forwardChildLogs()
+	logsDone := parent.forwardChildLogs() // 这是一个chan
 	if logsDone != nil {
 		defer func() {
 			// Wait for log forwarder to finish. This depends on
@@ -418,204 +418,9 @@ func (c *linuxContainer) Signal(s os.Signal, all bool) error {
 	return ErrNotRunning
 }
 
-func (c *linuxContainer) createExecFifo() error {
-	rootuid, err := c.Config().HostRootUID()
-	if err != nil {
-		return err
-	}
-	rootgid, err := c.Config().HostRootGID()
-	if err != nil {
-		return err
-	}
-
-	fifoName := filepath.Join(c.root, execFifoFilename)
-	if _, err := os.Stat(fifoName); err == nil {
-		return fmt.Errorf("exec fifo %s already exists", fifoName)
-	}
-	oldMask := unix.Umask(0o000)
-	if err := unix.Mkfifo(fifoName, 0o622); err != nil {
-		unix.Umask(oldMask)
-		return err
-	}
-	unix.Umask(oldMask)
-	return os.Chown(fifoName, rootuid, rootgid)
-}
-
 func (c *linuxContainer) deleteExecFifo() {
 	fifoName := filepath.Join(c.root, execFifoFilename)
 	os.Remove(fifoName)
-}
-
-// includeExecFifo opens the container's execfifo as a pathfd, so that the
-// container cannot access the statedir (and the FIFO itself remains
-// un-opened). It then adds the FifoFd to the given exec.Cmd as an inherited
-// fd, with _LIBCONTAINER_FIFOFD set to its fd number.
-func (c *linuxContainer) includeExecFifo(cmd *exec.Cmd) error {
-	fifoName := filepath.Join(c.root, execFifoFilename)
-	fifo, err := os.OpenFile(fifoName, unix.O_PATH|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return err
-	}
-	c.fifo = fifo
-
-	cmd.ExtraFiles = append(cmd.ExtraFiles, fifo)
-	cmd.Env = append(cmd.Env,
-		"_LIBCONTAINER_FIFOFD="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1))
-	return nil
-}
-
-func (c *linuxContainer) newParentProcess(p *Process) (parentProcess, error) {
-	parentInitPipe, childInitPipe, err := utils.NewSockPair("init")
-	if err != nil {
-		return nil, fmt.Errorf("unable to create init pipe: %w", err)
-	}
-	messageSockPair := filePair{parentInitPipe, childInitPipe}
-
-	parentLogPipe, childLogPipe, err := os.Pipe()
-	if err != nil {
-		return nil, fmt.Errorf("unable to create log pipe: %w", err)
-	}
-	logFilePair := filePair{parentLogPipe, childLogPipe}
-
-	cmd := c.commandTemplate(p, childInitPipe, childLogPipe)
-	if !p.Init {
-		return c.newSetnsProcess(p, cmd, messageSockPair, logFilePair)
-	}
-
-	// We only set up fifoFd if we're not doing a `runc exec`. The historic
-	// reason for this is that previously we would pass a dirfd that allowed
-	// for container rootfs escape (and not doing it in `runc exec` avoided
-	// that problem), but we no longer do that. However, there's no need to do
-	// this for `runc exec` so we just keep it this way to be safe.
-	if err := c.includeExecFifo(cmd); err != nil {
-		return nil, fmt.Errorf("unable to setup exec fifo: %w", err)
-	}
-	return c.newInitProcess(p, cmd, messageSockPair, logFilePair)
-}
-
-func (c *linuxContainer) commandTemplate(p *Process, childInitPipe *os.File, childLogPipe *os.File) *exec.Cmd {
-	cmd := exec.Command(c.initPath, c.initArgs[1:]...)
-	cmd.Args[0] = c.initArgs[0]
-	cmd.Stdin = p.Stdin
-	cmd.Stdout = p.Stdout
-	cmd.Stderr = p.Stderr
-	cmd.Dir = c.config.Rootfs
-	if cmd.SysProcAttr == nil {
-		cmd.SysProcAttr = &unix.SysProcAttr{}
-	}
-	cmd.Env = append(cmd.Env, "GOMAXPROCS="+os.Getenv("GOMAXPROCS"))
-	cmd.ExtraFiles = append(cmd.ExtraFiles, p.ExtraFiles...)
-	if p.ConsoleSocket != nil {
-		cmd.ExtraFiles = append(cmd.ExtraFiles, p.ConsoleSocket)
-		cmd.Env = append(cmd.Env,
-			"_LIBCONTAINER_CONSOLE="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1),
-		)
-	}
-	cmd.ExtraFiles = append(cmd.ExtraFiles, childInitPipe)
-	cmd.Env = append(cmd.Env,
-		"_LIBCONTAINER_INITPIPE="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1),
-		"_LIBCONTAINER_STATEDIR="+c.root,
-	)
-
-	cmd.ExtraFiles = append(cmd.ExtraFiles, childLogPipe)
-	cmd.Env = append(cmd.Env,
-		"_LIBCONTAINER_LOGPIPE="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1),
-		"_LIBCONTAINER_LOGLEVEL="+p.LogLevel,
-	)
-
-	// NOTE: when running a container with no PID namespace and the parent process spawning the container is
-	// PID1 the pdeathsig is being delivered to the container's init process by the kernel for some reason
-	// even with the parent still running.
-	if c.config.ParentDeathSignal > 0 {
-		cmd.SysProcAttr.Pdeathsig = unix.Signal(c.config.ParentDeathSignal)
-	}
-	return cmd
-}
-
-// shouldSendMountSources says whether the child process must setup bind mounts with
-// the source pre-opened (O_PATH) in the host user namespace.
-// See https://github.com/opencontainers/runc/issues/2484
-func (c *linuxContainer) shouldSendMountSources() bool {
-	// Passing the mount sources via SCM_RIGHTS is only necessary when
-	// both userns and mntns are active.
-	if !c.config.Namespaces.Contains(configs.NEWUSER) ||
-		!c.config.Namespaces.Contains(configs.NEWNS) {
-		return false
-	}
-
-	// nsexec.c send_mountsources() requires setns(mntns) capabilities
-	// CAP_SYS_CHROOT and CAP_SYS_ADMIN.
-	if c.config.RootlessEUID {
-		return false
-	}
-
-	// We need to send sources if there are bind-mounts.
-	for _, m := range c.config.Mounts {
-		if m.IsBind() {
-			return true
-		}
-	}
-
-	return false
-}
-
-func (c *linuxContainer) newInitProcess(p *Process, cmd *exec.Cmd, messageSockPair, logFilePair filePair) (*initProcess, error) {
-	cmd.Env = append(cmd.Env, "_LIBCONTAINER_INITTYPE="+string(initStandard))
-	nsMaps := make(map[configs.NamespaceType]string)
-	for _, ns := range c.config.Namespaces {
-		if ns.Path != "" {
-			nsMaps[ns.Type] = ns.Path
-		}
-	}
-	_, sharePidns := nsMaps[configs.NEWPID]
-	data, err := c.bootstrapData(c.config.Namespaces.CloneFlags(), nsMaps, initStandard)
-	if err != nil {
-		return nil, err
-	}
-
-	if c.shouldSendMountSources() {
-		// Elements on this slice will be paired with mounts (see StartInitialization() and
-		// prepareRootfs()). This slice MUST have the same size as c.config.Mounts.
-		mountFds := make([]int, len(c.config.Mounts))
-		for i, m := range c.config.Mounts {
-			if !m.IsBind() {
-				// Non bind-mounts do not use an fd.
-				mountFds[i] = -1
-				continue
-			}
-
-			// The fd passed here will not be used: nsexec.c will overwrite it with dup3(). We just need
-			// to allocate a fd so that we know the number to pass in the environment variable. The fd
-			// must not be closed before cmd.Start(), so we reuse messageSockPair.child because the
-			// lifecycle of that fd is already taken care of.
-			cmd.ExtraFiles = append(cmd.ExtraFiles, messageSockPair.child)
-			mountFds[i] = stdioFdCount + len(cmd.ExtraFiles) - 1
-		}
-
-		mountFdsJson, err := json.Marshal(mountFds)
-		if err != nil {
-			return nil, fmt.Errorf("Error creating _LIBCONTAINER_MOUNT_FDS: %w", err)
-		}
-
-		cmd.Env = append(cmd.Env,
-			"_LIBCONTAINER_MOUNT_FDS="+string(mountFdsJson),
-		)
-	}
-
-	init := &initProcess{
-		cmd:             cmd,
-		messageSockPair: messageSockPair,
-		logFilePair:     logFilePair,
-		manager:         c.cgroupManager,
-		intelRdtManager: c.intelRdtManager,
-		config:          c.newInitConfig(p),
-		container:       c,
-		process:         p,
-		bootstrapData:   data,
-		sharePidns:      sharePidns,
-	}
-	c.initProcess = init
-	return init, nil
 }
 
 func (c *linuxContainer) newSetnsProcess(p *Process, cmd *exec.Cmd, messageSockPair, logFilePair filePair) (*setnsProcess, error) {
@@ -673,46 +478,6 @@ func (c *linuxContainer) newSetnsProcess(p *Process, cmd *exec.Cmd, messageSockP
 		}
 	}
 	return proc, nil
-}
-
-func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
-	cfg := &initConfig{
-		Config:           c.config,
-		Args:             process.Args,
-		Env:              process.Env,
-		User:             process.User,
-		AdditionalGroups: process.AdditionalGroups,
-		Cwd:              process.Cwd,
-		Capabilities:     process.Capabilities,
-		PassedFilesCount: len(process.ExtraFiles),
-		ContainerId:      c.ID(),
-		NoNewPrivileges:  c.config.NoNewPrivileges,
-		RootlessEUID:     c.config.RootlessEUID,
-		RootlessCgroups:  c.config.RootlessCgroups,
-		AppArmorProfile:  c.config.AppArmorProfile,
-		ProcessLabel:     c.config.ProcessLabel,
-		Rlimits:          c.config.Rlimits,
-		CreateConsole:    process.ConsoleSocket != nil,
-		ConsoleWidth:     process.ConsoleWidth,
-		ConsoleHeight:    process.ConsoleHeight,
-	}
-	if process.NoNewPrivileges != nil {
-		cfg.NoNewPrivileges = *process.NoNewPrivileges
-	}
-	if process.AppArmorProfile != "" {
-		cfg.AppArmorProfile = process.AppArmorProfile
-	}
-	if process.Label != "" {
-		cfg.ProcessLabel = process.Label
-	}
-	if len(process.Rlimits) > 0 {
-		cfg.Rlimits = process.Rlimits
-	}
-	if cgroups.IsCgroup2UnifiedMode() {
-		cfg.Cgroup2Path = c.cgroupManager.Path("")
-	}
-
-	return cfg
 }
 
 func (c *linuxContainer) Destroy() error {
@@ -2078,6 +1843,111 @@ func (c *linuxContainer) currentOCIState() (*specs.State, error) {
 	return state, nil
 }
 
+// ignoreTerminateErrors returns nil if the given err matches an error known
+// to indicate that the terminate occurred successfully or err was nil, otherwise
+// err is returned unaltered.
+func ignoreTerminateErrors(err error) error {
+	if err == nil {
+		return nil
+	}
+	// terminate() might return an error from either Kill or Wait.
+	// The (*Cmd).Wait documentation says: "If the command fails to run
+	// or doesn't complete successfully, the error is of type *ExitError".
+	// Filter out such errors (like "exit status 1" or "signal: killed").
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return nil
+	}
+	if errors.Is(err, os.ErrProcessDone) {
+		return nil
+	}
+	s := err.Error()
+	if strings.Contains(s, "Wait was already called") {
+		return nil
+	}
+	return err
+}
+
+func (c *linuxContainer) createExecFifo() error {
+	rootuid, err := c.Config().HostRootUID()
+	if err != nil {
+		return err
+	}
+	rootgid, err := c.Config().HostRootGID()
+	if err != nil {
+		return err
+	}
+	// /run/containerd/runc/k8s.io/ecc8930f7fab93a9ba6f66ff7edda5e3c6b1d8eac3012a01dee22bfb6c4913b9/exec.fifo
+	fifoName := filepath.Join(c.root, execFifoFilename)
+	if _, err := os.Stat(fifoName); err == nil {
+		return fmt.Errorf("exec fifo %s already exists", fifoName)
+	}
+	oldMask := unix.Umask(0o000)
+	if err := unix.Mkfifo(fifoName, 0o622); err != nil {
+		unix.Umask(oldMask)
+		return err
+	}
+	unix.Umask(oldMask)
+	return os.Chown(fifoName, rootuid, rootgid)
+}
+
+func (c *linuxContainer) commandTemplate(p *Process, childInitPipe *os.File, childLogPipe *os.File) *exec.Cmd {
+	cmd := exec.Command(c.initPath, c.initArgs[1:]...) //  init
+	cmd.Args[0] = c.initArgs[0]                        // runc
+	cmd.Stdin = p.Stdin
+	cmd.Stdout = p.Stdout
+	cmd.Stderr = p.Stderr
+	cmd.Dir = c.config.Rootfs // /run/containerd/io.containerd.runtime.v2.task/k8s.io/000673ca95406e146f7a88a6f03dfeb7c7f15f89c80f957f3850ca29ff7c6301/rootfs
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &unix.SysProcAttr{}
+	}
+	cmd.Env = append(cmd.Env, "GOMAXPROCS="+os.Getenv("GOMAXPROCS"))
+	cmd.ExtraFiles = append(cmd.ExtraFiles, p.ExtraFiles...)
+	if p.ConsoleSocket != nil {
+		cmd.ExtraFiles = append(cmd.ExtraFiles, p.ConsoleSocket)
+		cmd.Env = append(cmd.Env,
+			"_LIBCONTAINER_CONSOLE="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1),
+		)
+	}
+	cmd.ExtraFiles = append(cmd.ExtraFiles, childInitPipe)
+	cmd.Env = append(cmd.Env,
+		"_LIBCONTAINER_INITPIPE="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1),
+		"_LIBCONTAINER_STATEDIR="+c.root,
+	)
+
+	cmd.ExtraFiles = append(cmd.ExtraFiles, childLogPipe)
+	cmd.Env = append(cmd.Env,
+		"_LIBCONTAINER_LOGPIPE="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1),
+		"_LIBCONTAINER_LOGLEVEL="+p.LogLevel,
+	)
+
+	// NOTE: when running a container with no PID namespace and the parent process spawning the container is
+	// PID1 the pdeathsig is being delivered to the container's init process by the kernel for some reason
+	// even with the parent still running.
+	if c.config.ParentDeathSignal > 0 {
+		cmd.SysProcAttr.Pdeathsig = unix.Signal(c.config.ParentDeathSignal)
+	}
+	return cmd
+}
+
+// includeExecFifo opens the container's execfifo as a pathfd, so that the
+// container cannot access the statedir (and the FIFO itself remains
+// un-opened). It then adds the FifoFd to the given exec.Cmd as an inherited
+// fd, with _LIBCONTAINER_FIFOFD set to its fd number.
+func (c *linuxContainer) includeExecFifo(cmd *exec.Cmd) error {
+	fifoName := filepath.Join(c.root, execFifoFilename)
+	fifo, err := os.OpenFile(fifoName, unix.O_PATH|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	c.fifo = fifo
+
+	cmd.ExtraFiles = append(cmd.ExtraFiles, fifo)
+	cmd.Env = append(cmd.Env,
+		"_LIBCONTAINER_FIFOFD="+strconv.Itoa(stdioFdCount+len(cmd.ExtraFiles)-1))
+	return nil
+}
+
 // orderNamespacePaths sorts namespace paths into a list of paths that we
 // can setns in order.
 func (c *linuxContainer) orderNamespacePaths(namespaces map[configs.NamespaceType]string) ([]string, error) {
@@ -2122,6 +1992,41 @@ func encodeIDMapping(idMap []configs.IDMap) ([]byte, error) {
 	return data.Bytes(), nil
 }
 
+func requiresRootOrMappingTool(c *configs.Config) bool {
+	gidMap := []configs.IDMap{
+		{ContainerID: 0, HostID: int64(os.Getegid()), Size: 1},
+	}
+	return !reflect.DeepEqual(c.GidMappings, gidMap)
+}
+
+// shouldSendMountSources says whether the child process must setup bind mounts with
+// the source pre-opened (O_PATH) in the host user namespace.
+// 表示子进程是否必须使用主机用户名称空间中的源 预打开(O_PATH)设置绑定挂载。
+// See https://github.com/opencontainers/runc/issues/2484
+func (c *linuxContainer) shouldSendMountSources() bool {
+	// Passing the mount sources via SCM_RIGHTS is only necessary when
+	// both userns and mntns are active.
+	if !c.config.Namespaces.Contains(configs.NEWUSER) ||
+		!c.config.Namespaces.Contains(configs.NEWNS) {
+		return false
+	}
+
+	// nsexec.c send_mountsources() requires setns(mntns) capabilities
+	// CAP_SYS_CHROOT and CAP_SYS_ADMIN.
+	if c.config.RootlessEUID {
+		return false
+	}
+
+	// We need to send sources if there are bind-mounts.
+	for _, m := range c.config.Mounts {
+		if m.IsBind() {
+			return true
+		}
+	}
+
+	return false
+}
+
 // netlinkError is an error wrapper type for use by custom netlink message
 // types. Panics with errors are wrapped in netlinkError so that the recover
 // in bootstrapData can distinguish intentional panics.
@@ -2133,6 +2038,8 @@ type netlinkError struct{ error }
 // such as one that uses nsenter package to bootstrap the container's
 // init process correctly, i.e. with correct namespaces, uid/gid
 // mapping etc.
+// 将必要的数据以 netlink 二进制格式编码为io.Reader。 Netlink为内核与用户空间进程之间的通信定义了一套标准的消息和处理机制
+// 消费者可以将数据写入引导程序，例如使用nsenter包正确引导容器的init进程，即使用正确的命名空间，uid/gid映射等。
 func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.NamespaceType]string, it initType) (_ io.Reader, Err error) {
 	// create the netlink message
 	r := nl.NewNetlinkRequest(int(InitMsg), 0)
@@ -2250,34 +2157,130 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 	return bytes.NewReader(r.Serialize()), nil
 }
 
-// ignoreTerminateErrors returns nil if the given err matches an error known
-// to indicate that the terminate occurred successfully or err was nil, otherwise
-// err is returned unaltered.
-func ignoreTerminateErrors(err error) error {
-	if err == nil {
-		return nil
+func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
+	cfg := &initConfig{
+		Config:           c.config,
+		Args:             process.Args,
+		Env:              process.Env,
+		User:             process.User,
+		AdditionalGroups: process.AdditionalGroups,
+		Cwd:              process.Cwd,
+		Capabilities:     process.Capabilities,
+		PassedFilesCount: len(process.ExtraFiles),
+		ContainerId:      c.ID(),
+		NoNewPrivileges:  c.config.NoNewPrivileges,
+		RootlessEUID:     c.config.RootlessEUID,
+		RootlessCgroups:  c.config.RootlessCgroups,
+		AppArmorProfile:  c.config.AppArmorProfile,
+		ProcessLabel:     c.config.ProcessLabel,
+		Rlimits:          c.config.Rlimits,
+		CreateConsole:    process.ConsoleSocket != nil,
+		ConsoleWidth:     process.ConsoleWidth,
+		ConsoleHeight:    process.ConsoleHeight,
 	}
-	// terminate() might return an error from either Kill or Wait.
-	// The (*Cmd).Wait documentation says: "If the command fails to run
-	// or doesn't complete successfully, the error is of type *ExitError".
-	// Filter out such errors (like "exit status 1" or "signal: killed").
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
-		return nil
+	if process.NoNewPrivileges != nil {
+		cfg.NoNewPrivileges = *process.NoNewPrivileges
 	}
-	if errors.Is(err, os.ErrProcessDone) {
-		return nil
+	if process.AppArmorProfile != "" {
+		cfg.AppArmorProfile = process.AppArmorProfile
 	}
-	s := err.Error()
-	if strings.Contains(s, "Wait was already called") {
-		return nil
+	if process.Label != "" {
+		cfg.ProcessLabel = process.Label
 	}
-	return err
+	if len(process.Rlimits) > 0 {
+		cfg.Rlimits = process.Rlimits
+	}
+	if cgroups.IsCgroup2UnifiedMode() {
+		cfg.Cgroup2Path = c.cgroupManager.Path("")
+	}
+
+	return cfg
 }
 
-func requiresRootOrMappingTool(c *configs.Config) bool {
-	gidMap := []configs.IDMap{
-		{ContainerID: 0, HostID: int64(os.Getegid()), Size: 1},
+func (c *linuxContainer) newInitProcess(p *Process, cmd *exec.Cmd, messageSockPair, logFilePair filePair) (*initProcess, error) {
+	cmd.Env = append(cmd.Env, "_LIBCONTAINER_INITTYPE="+string(initStandard))
+	nsMaps := make(map[configs.NamespaceType]string)
+	for _, ns := range c.config.Namespaces {
+		if ns.Path != "" {
+			nsMaps[ns.Type] = ns.Path
+		}
 	}
-	return !reflect.DeepEqual(c.GidMappings, gidMap)
+	_, sharePidns := nsMaps[configs.NEWPID]
+	data, err := c.bootstrapData(c.config.Namespaces.CloneFlags(), nsMaps, initStandard)
+	if err != nil {
+		return nil, err
+	}
+
+	if c.shouldSendMountSources() {
+		// Elements on this slice will be paired with mounts (see StartInitialization() and
+		// prepareRootfs()). This slice MUST have the same size as c.config.Mounts.
+		mountFds := make([]int, len(c.config.Mounts))
+		for i, m := range c.config.Mounts {
+			if !m.IsBind() {
+				// Non bind-mounts do not use an fd.
+				mountFds[i] = -1
+				continue
+			}
+
+			// The fd passed here will not be used: nsexec.c will overwrite it with dup3(). We just need
+			// to allocate a fd so that we know the number to pass in the environment variable. The fd
+			// must not be closed before cmd.Start(), so we reuse messageSockPair.child because the
+			// lifecycle of that fd is already taken care of.
+			cmd.ExtraFiles = append(cmd.ExtraFiles, messageSockPair.child)
+			mountFds[i] = stdioFdCount + len(cmd.ExtraFiles) - 1
+		}
+
+		mountFdsJson, err := json.Marshal(mountFds)
+		if err != nil {
+			return nil, fmt.Errorf("Error creating _LIBCONTAINER_MOUNT_FDS: %w", err)
+		}
+
+		cmd.Env = append(cmd.Env,
+			"_LIBCONTAINER_MOUNT_FDS="+string(mountFdsJson),
+		)
+	}
+
+	init := &initProcess{
+		cmd:             cmd,
+		messageSockPair: messageSockPair,
+		logFilePair:     logFilePair,
+		manager:         c.cgroupManager,
+		intelRdtManager: c.intelRdtManager,
+		config:          c.newInitConfig(p),
+		container:       c,
+		process:         p,
+		bootstrapData:   data,
+		sharePidns:      sharePidns,
+	}
+	c.initProcess = init
+	return init, nil
+}
+
+func (c *linuxContainer) newParentProcess(p *Process) (parentProcess, error) {
+	parentInitPipe, childInitPipe, err := utils.NewSockPair("init")
+	if err != nil {
+		return nil, fmt.Errorf("unable to create init pipe: %w", err)
+	}
+	messageSockPair := filePair{parentInitPipe, childInitPipe}
+
+	parentLogPipe, childLogPipe, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("unable to create log pipe: %w", err)
+	}
+	logFilePair := filePair{parentLogPipe, childLogPipe}
+
+	cmd := c.commandTemplate(p, childInitPipe, childLogPipe)
+	if !p.Init {
+		return c.newSetnsProcess(p, cmd, messageSockPair, logFilePair)
+	}
+
+	// We only set up fifoFd if we're not doing a `runc exec`. The historic
+	// reason for this is that previously we would pass a dirfd that allowed
+	// for container rootfs escape (and not doing it in `runc exec` avoided
+	// that problem), but we no longer do that. However, there's no need to do
+	// this for `runc exec` so we just keep it this way to be safe.
+	if err := c.includeExecFifo(cmd); err != nil {
+		return nil, fmt.Errorf("unable to setup exec fifo: %w", err)
+	}
+	return c.newInitProcess(p, cmd, messageSockPair, logFilePair)
 }

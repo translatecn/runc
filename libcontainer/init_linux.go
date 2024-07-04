@@ -76,66 +76,6 @@ type initer interface {
 	Init() error
 }
 
-func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, fifoFd, logFd int, mountFds []int) (initer, error) {
-	var config *initConfig
-	if err := json.NewDecoder(pipe).Decode(&config); err != nil {
-		return nil, err
-	}
-	if err := populateProcessEnvironment(config.Env); err != nil {
-		return nil, err
-	}
-	switch t {
-	case initSetns:
-		// mountFds must be nil in this case. We don't mount while doing runc exec.
-		if mountFds != nil {
-			return nil, errors.New("mountFds must be nil. Can't mount while doing runc exec.")
-		}
-
-		return &linuxSetnsInit{
-			pipe:          pipe,
-			consoleSocket: consoleSocket,
-			config:        config,
-			logFd:         logFd,
-		}, nil
-	case initStandard:
-		return &linuxStandardInit{
-			pipe:          pipe,
-			consoleSocket: consoleSocket,
-			parentPid:     unix.Getppid(),
-			config:        config,
-			fifoFd:        fifoFd,
-			logFd:         logFd,
-			mountFds:      mountFds,
-		}, nil
-	}
-	return nil, fmt.Errorf("unknown init type %q", t)
-}
-
-// populateProcessEnvironment loads the provided environment variables into the
-// current processes's environment.
-func populateProcessEnvironment(env []string) error {
-	for _, pair := range env {
-		p := strings.SplitN(pair, "=", 2)
-		if len(p) < 2 {
-			return errors.New("invalid environment variable: missing '='")
-		}
-		name, val := p[0], p[1]
-		if name == "" {
-			return errors.New("invalid environment variable: name cannot be empty")
-		}
-		if strings.IndexByte(name, 0) >= 0 {
-			return fmt.Errorf("invalid environment variable %q: name contains nul byte (\\x00)", name)
-		}
-		if strings.IndexByte(val, 0) >= 0 {
-			return fmt.Errorf("invalid environment variable %q: value contains nul byte (\\x00)", name)
-		}
-		if err := os.Setenv(name, val); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // verifyCwd ensures that the current directory is actually inside the mount
 // namespace root of the current process.
 func verifyCwd() error {
@@ -621,4 +561,65 @@ func signalAllProcesses(m cgroups.Manager, s os.Signal) error {
 		}
 	}
 	return nil
+}
+
+// populateProcessEnvironment loads the provided environment variables into the
+// current processes's environment.
+func populateProcessEnvironment(env []string) error {
+	for _, pair := range env {
+		p := strings.SplitN(pair, "=", 2)
+		if len(p) < 2 {
+			return errors.New("invalid environment variable: missing '='")
+		}
+		name, val := p[0], p[1]
+		if name == "" {
+			return errors.New("invalid environment variable: name cannot be empty")
+		}
+		if strings.IndexByte(name, 0) >= 0 {
+			return fmt.Errorf("invalid environment variable %q: name contains nul byte (\\x00)", name)
+		}
+		if strings.IndexByte(val, 0) >= 0 {
+			return fmt.Errorf("invalid environment variable %q: value contains nul byte (\\x00)", name)
+		}
+		if err := os.Setenv(name, val); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, fifoFd, logFd int, mountFds []int) (initer, error) {
+	var config *initConfig
+	// 	if err := utils.WriteJSON(p.messageSockPair.parent, p.config); err != nil {
+	if err := json.NewDecoder(pipe).Decode(&config); err != nil {
+		return nil, err
+	}
+	if err := populateProcessEnvironment(config.Env); err != nil {
+		return nil, err
+	}
+	switch t {
+	case initSetns:
+		// mountFds must be nil in this case. We don't mount while doing runc exec.
+		if mountFds != nil {
+			return nil, errors.New("mountFds must be nil. Can't mount while doing runc exec.")
+		}
+
+		return &linuxSetnsInit{
+			pipe:          pipe,
+			consoleSocket: consoleSocket,
+			config:        config,
+			logFd:         logFd,
+		}, nil
+	case initStandard:
+		return &linuxStandardInit{
+			pipe:          pipe,
+			consoleSocket: consoleSocket,
+			parentPid:     unix.Getppid(),
+			config:        config,
+			fifoFd:        fifoFd,
+			logFd:         logFd,
+			mountFds:      mountFds,
+		}, nil
+	}
+	return nil, fmt.Errorf("unknown init type %q", t)
 }

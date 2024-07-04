@@ -68,6 +68,8 @@ func containsDomainController(r *configs.Resources) bool {
 	return isMemorySet(r) || isIoSet(r) || isCpuSet(r) || isHugeTlbSet(r)
 }
 
+// ------------------------------------------------------------------------------------------------------------------------
+
 // CreateCgroupPath creates cgroupv2 path, enabling all the supported controllers.
 func CreateCgroupPath(path string, c *configs.Cgroup) (Err error) {
 	if !strings.HasPrefix(path, UnifiedMountpoint) {

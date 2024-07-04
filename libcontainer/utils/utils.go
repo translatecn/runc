@@ -42,16 +42,6 @@ func ExitStatus(status unix.WaitStatus) int {
 	return status.ExitStatus()
 }
 
-// WriteJSON writes the provided struct v to w using standard json marshaling
-func WriteJSON(w io.Writer, v interface{}) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	_, err = w.Write(data)
-	return err
-}
-
 // CleanPath makes a path safe for use with filepath.Join. This is done by not
 // only cleaning the path, but also (if the path is relative) adding a leading
 // '/' and cleaning it (then removing the leading '/'). This ensures that a
@@ -164,4 +154,14 @@ func Annotations(labels []string) (bundle string, userAnnotations map[string]str
 		}
 	}
 	return
+}
+
+// WriteJSON writes the provided struct v to w using standard json marshaling
+func WriteJSON(w io.Writer, v interface{}) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(data)
+	return err
 }

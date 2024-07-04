@@ -21,11 +21,11 @@ import (
 )
 
 type linuxStandardInit struct {
-	pipe          *os.File
+	pipe          *os.File //  NewSockPair      init-c    3
 	consoleSocket *os.File
 	parentPid     int
-	fifoFd        int
-	logFd         int
+	fifoFd        int // 5   /run/containerd/runc/k8s.io/425f28daf8c6dd7935d6a748dce42e505e002d61e871b4c6919902bf7f6651ed/exec.fifo
+	logFd         int // os.Pipe()        |1        4
 	mountFds      []int
 	config        *initConfig
 }

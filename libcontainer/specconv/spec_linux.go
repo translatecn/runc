@@ -329,176 +329,6 @@ type CreateOpts struct {
 	RootlessCgroups  bool
 }
 
-// CreateLibcontainerConfig creates a new libcontainer configuration from a
-// given specification and a cgroup name
-func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
-	// runc's cwd will always be the bundle path
-	rcwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
-	}
-	cwd, err := filepath.Abs(rcwd)
-	if err != nil {
-		return nil, err
-	}
-	spec := opts.Spec
-	if spec.Root == nil {
-		return nil, errors.New("root must be specified")
-	}
-	rootfsPath := spec.Root.Path
-	if !filepath.IsAbs(rootfsPath) {
-		rootfsPath = filepath.Join(cwd, rootfsPath)
-	}
-	labels := []string{}
-	for k, v := range spec.Annotations {
-		labels = append(labels, k+"="+v)
-	}
-	config := &configs.Config{
-		Rootfs:          rootfsPath,
-		NoPivotRoot:     opts.NoPivotRoot,
-		Readonlyfs:      spec.Root.Readonly,
-		Hostname:        spec.Hostname,
-		Labels:          append(labels, "bundle="+cwd),
-		NoNewKeyring:    opts.NoNewKeyring,
-		RootlessEUID:    opts.RootlessEUID,
-		RootlessCgroups: opts.RootlessCgroups,
-	}
-
-	for _, m := range spec.Mounts {
-		cm, err := createLibcontainerMount(cwd, m)
-		if err != nil {
-			return nil, fmt.Errorf("invalid mount %+v: %w", m, err)
-		}
-		config.Mounts = append(config.Mounts, cm)
-	}
-
-	defaultDevs, err := createDevices(spec, config)
-	if err != nil {
-		return nil, err
-	}
-
-	c, err := CreateCgroupConfig(opts, defaultDevs)
-	if err != nil {
-		return nil, err
-	}
-
-	config.Cgroups = c
-	// set linux-specific config
-	if spec.Linux != nil {
-		initMaps()
-
-		var exists bool
-		if config.RootPropagation, exists = mountPropagationMapping[spec.Linux.RootfsPropagation]; !exists {
-			return nil, fmt.Errorf("rootfsPropagation=%v is not supported", spec.Linux.RootfsPropagation)
-		}
-		if config.NoPivotRoot && (config.RootPropagation&unix.MS_PRIVATE != 0) {
-			return nil, errors.New("rootfsPropagation of [r]private is not safe without pivot_root")
-		}
-
-		for _, ns := range spec.Linux.Namespaces {
-			t, exists := namespaceMapping[ns.Type]
-			if !exists {
-				return nil, fmt.Errorf("namespace %q does not exist", ns)
-			}
-			if config.Namespaces.Contains(t) {
-				return nil, fmt.Errorf("malformed spec file: duplicated ns %q", ns)
-			}
-			config.Namespaces.Add(t, ns.Path)
-		}
-		if config.Namespaces.Contains(configs.NEWNET) && config.Namespaces.PathOf(configs.NEWNET) == "" {
-			config.Networks = []*configs.Network{
-				{
-					Type: "loopback",
-				},
-			}
-		}
-		if config.Namespaces.Contains(configs.NEWUSER) {
-			if err := setupUserNamespace(spec, config); err != nil {
-				return nil, err
-			}
-		}
-		config.MaskPaths = spec.Linux.MaskedPaths
-		config.ReadonlyPaths = spec.Linux.ReadonlyPaths
-		config.MountLabel = spec.Linux.MountLabel
-		config.Sysctl = spec.Linux.Sysctl
-		if spec.Linux.Seccomp != nil {
-			seccomp, err := SetupSeccomp(spec.Linux.Seccomp)
-			if err != nil {
-				return nil, err
-			}
-			config.Seccomp = seccomp
-		}
-		if spec.Linux.IntelRdt != nil {
-			config.IntelRdt = &configs.IntelRdt{
-				ClosID:        spec.Linux.IntelRdt.ClosID,
-				L3CacheSchema: spec.Linux.IntelRdt.L3CacheSchema,
-				MemBwSchema:   spec.Linux.IntelRdt.MemBwSchema,
-			}
-		}
-	}
-
-	// Set the host UID that should own the container's cgroup.
-	// This must be performed after setupUserNamespace, so that
-	// config.HostRootUID() returns the correct result.
-	//
-	// Only set it if the container will have its own cgroup
-	// namespace and the cgroupfs will be mounted read/write.
-	//
-	hasCgroupNS := config.Namespaces.Contains(configs.NEWCGROUP) && config.Namespaces.PathOf(configs.NEWCGROUP) == ""
-	hasRwCgroupfs := false
-	if hasCgroupNS {
-		for _, m := range config.Mounts {
-			if m.Source == "cgroup" && filepath.Clean(m.Destination) == "/sys/fs/cgroup" && (m.Flags&unix.MS_RDONLY) == 0 {
-				hasRwCgroupfs = true
-				break
-			}
-		}
-	}
-	processUid := 0
-	if spec.Process != nil {
-		// Chown the cgroup to the UID running the process,
-		// which is not necessarily UID 0 in the container
-		// namespace (e.g., an unprivileged UID in the host
-		// user namespace).
-		processUid = int(spec.Process.User.UID)
-	}
-	if hasCgroupNS && hasRwCgroupfs {
-		ownerUid, err := config.HostUID(processUid)
-		// There are two error cases; we can ignore both.
-		//
-		// 1. uidMappings is unset.  Either there is no user
-		//    namespace (fine), or it is an error (which is
-		//    checked elsewhere).
-		//
-		// 2. The user is unmapped in the user namespace.  This is an
-		//    unusual configuration and might be an error.  But it too
-		//    will be checked elsewhere, so we can ignore it here.
-		//
-		if err == nil {
-			config.Cgroups.OwnerUID = &ownerUid
-		}
-	}
-
-	if spec.Process != nil {
-		config.OomScoreAdj = spec.Process.OOMScoreAdj
-		config.NoNewPrivileges = spec.Process.NoNewPrivileges
-		config.Umask = spec.Process.User.Umask
-		config.ProcessLabel = spec.Process.SelinuxLabel
-		if spec.Process.Capabilities != nil {
-			config.Capabilities = &configs.Capabilities{
-				Bounding:    spec.Process.Capabilities.Bounding,
-				Effective:   spec.Process.Capabilities.Effective,
-				Permitted:   spec.Process.Capabilities.Permitted,
-				Inheritable: spec.Process.Capabilities.Inheritable,
-				Ambient:     spec.Process.Capabilities.Ambient,
-			}
-		}
-	}
-	createHooks(spec, config)
-	config.Version = specs.Version
-	return config, nil
-}
-
 func createLibcontainerMount(cwd string, m specs.Mount) (*configs.Mount, error) {
 	if !filepath.IsAbs(m.Destination) {
 		// Relax validation for backward compatibility
@@ -613,6 +443,218 @@ func initSystemdProps(spec *specs.Spec) ([]systemdDbus.Property, error) {
 	}
 
 	return sp, nil
+}
+
+func stringToCgroupDeviceRune(s string) (devices.Type, error) {
+	switch s {
+	case "a":
+		return devices.WildcardDevice, nil
+	case "b":
+		return devices.BlockDevice, nil
+	case "c":
+		return devices.CharDevice, nil
+	default:
+		return 0, fmt.Errorf("invalid cgroup device type %q", s)
+	}
+}
+
+func stringToDeviceRune(s string) (devices.Type, error) {
+	switch s {
+	case "p":
+		return devices.FifoDevice, nil
+	case "u", "c":
+		return devices.CharDevice, nil
+	case "b":
+		return devices.BlockDevice, nil
+	default:
+		return 0, fmt.Errorf("invalid device type %q", s)
+	}
+}
+
+func createDevices(spec *specs.Spec, config *configs.Config) ([]*devices.Device, error) {
+	// If a spec device is redundant with a default device, remove that default
+	// device (the spec one takes priority).
+	dedupedAllowDevs := []*devices.Device{}
+
+next:
+	for _, ad := range AllowedDevices {
+		if ad.Path != "" && spec.Linux != nil {
+			for _, sd := range spec.Linux.Devices {
+				if sd.Path == ad.Path {
+					continue next
+				}
+			}
+		}
+		dedupedAllowDevs = append(dedupedAllowDevs, ad)
+		if ad.Path != "" {
+			config.Devices = append(config.Devices, ad)
+		}
+	}
+
+	// Merge in additional devices from the spec.
+	if spec.Linux != nil {
+		for _, d := range spec.Linux.Devices {
+			var uid, gid uint32
+			var filemode os.FileMode = 0o666
+
+			if d.UID != nil {
+				uid = *d.UID
+			}
+			if d.GID != nil {
+				gid = *d.GID
+			}
+			dt, err := stringToDeviceRune(d.Type)
+			if err != nil {
+				return nil, err
+			}
+			if d.FileMode != nil {
+				filemode = *d.FileMode &^ unix.S_IFMT
+			}
+			device := &devices.Device{
+				Rule: devices.Rule{
+					Type:  dt,
+					Major: d.Major,
+					Minor: d.Minor,
+				},
+				Path:     d.Path,
+				FileMode: filemode,
+				Uid:      uid,
+				Gid:      gid,
+			}
+			config.Devices = append(config.Devices, device)
+		}
+	}
+
+	return dedupedAllowDevs, nil
+}
+
+// parseMountOptions parses options and returns a configs.Mount
+// structure with fields that depends on options set accordingly.
+func parseMountOptions(options []string) *configs.Mount {
+	var (
+		data                   []string
+		m                      configs.Mount
+		recAttrSet, recAttrClr uint64
+	)
+	initMaps()
+	for _, o := range options {
+		// If the option does not exist in the mountFlags table,
+		// or the flag is not supported on the platform,
+		// then it is a data value for a specific fs type.
+		if f, exists := mountFlags[o]; exists && f.flag != 0 {
+			if f.clear {
+				m.Flags &= ^f.flag
+			} else {
+				m.Flags |= f.flag
+			}
+		} else if f, exists := mountPropagationMapping[o]; exists && f != 0 {
+			m.PropagationFlags = append(m.PropagationFlags, f)
+		} else if f, exists := recAttrFlags[o]; exists {
+			if f.clear {
+				recAttrClr |= f.flag
+			} else {
+				recAttrSet |= f.flag
+				if f.flag&unix.MOUNT_ATTR__ATIME == f.flag {
+					// https://man7.org/linux/man-pages/man2/mount_setattr.2.html
+					// "cannot simply specify the access-time setting in attr_set, but must also include MOUNT_ATTR__ATIME in the attr_clr field."
+					recAttrClr |= unix.MOUNT_ATTR__ATIME
+				}
+			}
+		} else if f, exists := extensionFlags[o]; exists && f.flag != 0 {
+			if f.clear {
+				m.Extensions &= ^f.flag
+			} else {
+				m.Extensions |= f.flag
+			}
+		} else {
+			data = append(data, o)
+		}
+	}
+	m.Data = strings.Join(data, ",")
+	if recAttrSet != 0 || recAttrClr != 0 {
+		m.RecAttr = &unix.MountAttr{
+			Attr_set: recAttrSet,
+			Attr_clr: recAttrClr,
+		}
+	}
+	return &m
+}
+
+func SetupSeccomp(config *specs.LinuxSeccomp) (*configs.Seccomp, error) {
+	if config == nil {
+		return nil, nil
+	}
+
+	// No default action specified, no syscalls listed, assume seccomp disabled
+	if config.DefaultAction == "" && len(config.Syscalls) == 0 {
+		return nil, nil
+	}
+
+	// We don't currently support seccomp flags.
+	if len(config.Flags) != 0 {
+		return nil, errors.New("seccomp flags are not yet supported by runc")
+	}
+
+	newConfig := new(configs.Seccomp)
+	newConfig.Syscalls = []*configs.Syscall{}
+
+	if len(config.Architectures) > 0 {
+		newConfig.Architectures = []string{}
+		for _, arch := range config.Architectures {
+			newArch, err := seccomp.ConvertStringToArch(string(arch))
+			if err != nil {
+				return nil, err
+			}
+			newConfig.Architectures = append(newConfig.Architectures, newArch)
+		}
+	}
+
+	// Convert default action from string representation
+	newDefaultAction, err := seccomp.ConvertStringToAction(string(config.DefaultAction))
+	if err != nil {
+		return nil, err
+	}
+	newConfig.DefaultAction = newDefaultAction
+	newConfig.DefaultErrnoRet = config.DefaultErrnoRet
+
+	newConfig.ListenerPath = config.ListenerPath
+	newConfig.ListenerMetadata = config.ListenerMetadata
+
+	// Loop through all syscall blocks and convert them to libcontainer format
+	for _, call := range config.Syscalls {
+		newAction, err := seccomp.ConvertStringToAction(string(call.Action))
+		if err != nil {
+			return nil, err
+		}
+
+		for _, name := range call.Names {
+			newCall := configs.Syscall{
+				Name:     name,
+				Action:   newAction,
+				ErrnoRet: call.ErrnoRet,
+				Args:     []*configs.Arg{},
+			}
+			// Loop through all the arguments of the syscall and convert them
+			for _, arg := range call.Args {
+				newOp, err := seccomp.ConvertStringToOperator(string(arg.Op))
+				if err != nil {
+					return nil, err
+				}
+
+				newArg := configs.Arg{
+					Index:    arg.Index,
+					Value:    arg.Value,
+					ValueTwo: arg.ValueTwo,
+					Op:       newOp,
+				}
+
+				newCall.Args = append(newCall.Args, &newArg)
+			}
+			newConfig.Syscalls = append(newConfig.Syscalls, &newCall)
+		}
+	}
+
+	return newConfig, nil
 }
 
 func CreateCgroupConfig(opts *CreateOpts, defaultDevs []*devices.Device) (*configs.Cgroup, error) {
@@ -841,89 +883,6 @@ func CreateCgroupConfig(opts *CreateOpts, defaultDevs []*devices.Device) (*confi
 	return c, nil
 }
 
-func stringToCgroupDeviceRune(s string) (devices.Type, error) {
-	switch s {
-	case "a":
-		return devices.WildcardDevice, nil
-	case "b":
-		return devices.BlockDevice, nil
-	case "c":
-		return devices.CharDevice, nil
-	default:
-		return 0, fmt.Errorf("invalid cgroup device type %q", s)
-	}
-}
-
-func stringToDeviceRune(s string) (devices.Type, error) {
-	switch s {
-	case "p":
-		return devices.FifoDevice, nil
-	case "u", "c":
-		return devices.CharDevice, nil
-	case "b":
-		return devices.BlockDevice, nil
-	default:
-		return 0, fmt.Errorf("invalid device type %q", s)
-	}
-}
-
-func createDevices(spec *specs.Spec, config *configs.Config) ([]*devices.Device, error) {
-	// If a spec device is redundant with a default device, remove that default
-	// device (the spec one takes priority).
-	dedupedAllowDevs := []*devices.Device{}
-
-next:
-	for _, ad := range AllowedDevices {
-		if ad.Path != "" && spec.Linux != nil {
-			for _, sd := range spec.Linux.Devices {
-				if sd.Path == ad.Path {
-					continue next
-				}
-			}
-		}
-		dedupedAllowDevs = append(dedupedAllowDevs, ad)
-		if ad.Path != "" {
-			config.Devices = append(config.Devices, ad)
-		}
-	}
-
-	// Merge in additional devices from the spec.
-	if spec.Linux != nil {
-		for _, d := range spec.Linux.Devices {
-			var uid, gid uint32
-			var filemode os.FileMode = 0o666
-
-			if d.UID != nil {
-				uid = *d.UID
-			}
-			if d.GID != nil {
-				gid = *d.GID
-			}
-			dt, err := stringToDeviceRune(d.Type)
-			if err != nil {
-				return nil, err
-			}
-			if d.FileMode != nil {
-				filemode = *d.FileMode &^ unix.S_IFMT
-			}
-			device := &devices.Device{
-				Rule: devices.Rule{
-					Type:  dt,
-					Major: d.Major,
-					Minor: d.Minor,
-				},
-				Path:     d.Path,
-				FileMode: filemode,
-				Uid:      uid,
-				Gid:      gid,
-			}
-			config.Devices = append(config.Devices, device)
-		}
-	}
-
-	return dedupedAllowDevs, nil
-}
-
 func setupUserNamespace(spec *specs.Spec, config *configs.Config) error {
 	create := func(m specs.LinuxIDMapping) configs.IDMap {
 		return configs.IDMap{
@@ -989,133 +948,17 @@ func setupUserNamespace(spec *specs.Spec, config *configs.Config) error {
 	return nil
 }
 
-// parseMountOptions parses options and returns a configs.Mount
-// structure with fields that depends on options set accordingly.
-func parseMountOptions(options []string) *configs.Mount {
-	var (
-		data                   []string
-		m                      configs.Mount
-		recAttrSet, recAttrClr uint64
-	)
-	initMaps()
-	for _, o := range options {
-		// If the option does not exist in the mountFlags table,
-		// or the flag is not supported on the platform,
-		// then it is a data value for a specific fs type.
-		if f, exists := mountFlags[o]; exists && f.flag != 0 {
-			if f.clear {
-				m.Flags &= ^f.flag
-			} else {
-				m.Flags |= f.flag
-			}
-		} else if f, exists := mountPropagationMapping[o]; exists && f != 0 {
-			m.PropagationFlags = append(m.PropagationFlags, f)
-		} else if f, exists := recAttrFlags[o]; exists {
-			if f.clear {
-				recAttrClr |= f.flag
-			} else {
-				recAttrSet |= f.flag
-				if f.flag&unix.MOUNT_ATTR__ATIME == f.flag {
-					// https://man7.org/linux/man-pages/man2/mount_setattr.2.html
-					// "cannot simply specify the access-time setting in attr_set, but must also include MOUNT_ATTR__ATIME in the attr_clr field."
-					recAttrClr |= unix.MOUNT_ATTR__ATIME
-				}
-			}
-		} else if f, exists := extensionFlags[o]; exists && f.flag != 0 {
-			if f.clear {
-				m.Extensions &= ^f.flag
-			} else {
-				m.Extensions |= f.flag
-			}
-		} else {
-			data = append(data, o)
-		}
+func createCommandHook(h specs.Hook) configs.Command {
+	cmd := configs.Command{
+		Path: h.Path,
+		Args: h.Args,
+		Env:  h.Env,
 	}
-	m.Data = strings.Join(data, ",")
-	if recAttrSet != 0 || recAttrClr != 0 {
-		m.RecAttr = &unix.MountAttr{
-			Attr_set: recAttrSet,
-			Attr_clr: recAttrClr,
-		}
+	if h.Timeout != nil {
+		d := time.Duration(*h.Timeout) * time.Second
+		cmd.Timeout = &d
 	}
-	return &m
-}
-
-func SetupSeccomp(config *specs.LinuxSeccomp) (*configs.Seccomp, error) {
-	if config == nil {
-		return nil, nil
-	}
-
-	// No default action specified, no syscalls listed, assume seccomp disabled
-	if config.DefaultAction == "" && len(config.Syscalls) == 0 {
-		return nil, nil
-	}
-
-	// We don't currently support seccomp flags.
-	if len(config.Flags) != 0 {
-		return nil, errors.New("seccomp flags are not yet supported by runc")
-	}
-
-	newConfig := new(configs.Seccomp)
-	newConfig.Syscalls = []*configs.Syscall{}
-
-	if len(config.Architectures) > 0 {
-		newConfig.Architectures = []string{}
-		for _, arch := range config.Architectures {
-			newArch, err := seccomp.ConvertStringToArch(string(arch))
-			if err != nil {
-				return nil, err
-			}
-			newConfig.Architectures = append(newConfig.Architectures, newArch)
-		}
-	}
-
-	// Convert default action from string representation
-	newDefaultAction, err := seccomp.ConvertStringToAction(string(config.DefaultAction))
-	if err != nil {
-		return nil, err
-	}
-	newConfig.DefaultAction = newDefaultAction
-	newConfig.DefaultErrnoRet = config.DefaultErrnoRet
-
-	newConfig.ListenerPath = config.ListenerPath
-	newConfig.ListenerMetadata = config.ListenerMetadata
-
-	// Loop through all syscall blocks and convert them to libcontainer format
-	for _, call := range config.Syscalls {
-		newAction, err := seccomp.ConvertStringToAction(string(call.Action))
-		if err != nil {
-			return nil, err
-		}
-
-		for _, name := range call.Names {
-			newCall := configs.Syscall{
-				Name:     name,
-				Action:   newAction,
-				ErrnoRet: call.ErrnoRet,
-				Args:     []*configs.Arg{},
-			}
-			// Loop through all the arguments of the syscall and convert them
-			for _, arg := range call.Args {
-				newOp, err := seccomp.ConvertStringToOperator(string(arg.Op))
-				if err != nil {
-					return nil, err
-				}
-
-				newArg := configs.Arg{
-					Index:    arg.Index,
-					Value:    arg.Value,
-					ValueTwo: arg.ValueTwo,
-					Op:       newOp,
-				}
-
-				newCall.Args = append(newCall.Args, &newArg)
-			}
-			newConfig.Syscalls = append(newConfig.Syscalls, &newCall)
-		}
-	}
-
-	return newConfig, nil
+	return cmd
 }
 
 func createHooks(rspec *specs.Spec, config *configs.Config) {
@@ -1148,15 +991,165 @@ func createHooks(rspec *specs.Spec, config *configs.Config) {
 	}
 }
 
-func createCommandHook(h specs.Hook) configs.Command {
-	cmd := configs.Command{
-		Path: h.Path,
-		Args: h.Args,
-		Env:  h.Env,
+// CreateLibcontainerConfig creates a new libcontainer configuration from a
+// given specification and a cgroup name
+func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
+	// runc's cwd will always be the bundle path
+	rcwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
 	}
-	if h.Timeout != nil {
-		d := time.Duration(*h.Timeout) * time.Second
-		cmd.Timeout = &d
+	cwd, err := filepath.Abs(rcwd)
+	if err != nil {
+		return nil, err
 	}
-	return cmd
+	spec := opts.Spec
+	if spec.Root == nil {
+		return nil, errors.New("root must be specified")
+	}
+	rootfsPath := spec.Root.Path
+	if !filepath.IsAbs(rootfsPath) {
+		rootfsPath = filepath.Join(cwd, rootfsPath)
+	}
+	labels := []string{}
+	for k, v := range spec.Annotations {
+		labels = append(labels, k+"="+v)
+	}
+	config := &configs.Config{
+		Rootfs:          rootfsPath,
+		NoPivotRoot:     opts.NoPivotRoot,
+		Readonlyfs:      spec.Root.Readonly,
+		Hostname:        spec.Hostname,
+		Labels:          append(labels, "bundle="+cwd),
+		NoNewKeyring:    opts.NoNewKeyring,
+		RootlessEUID:    opts.RootlessEUID,
+		RootlessCgroups: opts.RootlessCgroups,
+	}
+
+	for _, m := range spec.Mounts {
+		cm, err := createLibcontainerMount(cwd, m)
+		if err != nil {
+			return nil, fmt.Errorf("invalid mount %+v: %w", m, err)
+		}
+		config.Mounts = append(config.Mounts, cm)
+	}
+
+	defaultDevs, err := createDevices(spec, config)
+	if err != nil {
+		return nil, err
+	}
+
+	c, err := CreateCgroupConfig(opts, defaultDevs)
+	if err != nil {
+		return nil, err
+	}
+
+	config.Cgroups = c
+	// set linux-specific config
+	if spec.Linux != nil {
+		initMaps()
+
+		var exists bool
+		if config.RootPropagation, exists = mountPropagationMapping[spec.Linux.RootfsPropagation]; !exists {
+			return nil, fmt.Errorf("rootfsPropagation=%v is not supported", spec.Linux.RootfsPropagation)
+		}
+		if config.NoPivotRoot && (config.RootPropagation&unix.MS_PRIVATE != 0) {
+			return nil, errors.New("rootfsPropagation of [r]private is not safe without pivot_root")
+		}
+
+		for _, ns := range spec.Linux.Namespaces {
+			t, exists := namespaceMapping[ns.Type]
+			if !exists {
+				return nil, fmt.Errorf("namespace %q does not exist", ns)
+			}
+			if config.Namespaces.Contains(t) {
+				return nil, fmt.Errorf("malformed spec file: duplicated ns %q", ns)
+			}
+			config.Namespaces.Add(t, ns.Path)
+		}
+		if config.Namespaces.Contains(configs.NEWNET) && config.Namespaces.PathOf(configs.NEWNET) == "" {
+			config.Networks = []*configs.Network{
+				{
+					Type: "loopback",
+				},
+			}
+		}
+		if config.Namespaces.Contains(configs.NEWUSER) {
+			if err := setupUserNamespace(spec, config); err != nil {
+				return nil, err
+			}
+		}
+		config.MaskPaths = spec.Linux.MaskedPaths
+		config.ReadonlyPaths = spec.Linux.ReadonlyPaths
+		config.MountLabel = spec.Linux.MountLabel
+		config.Sysctl = spec.Linux.Sysctl
+		if spec.Linux.Seccomp != nil {
+			seccomp, err := SetupSeccomp(spec.Linux.Seccomp)
+			if err != nil {
+				return nil, err
+			}
+			config.Seccomp = seccomp
+		}
+		if spec.Linux.IntelRdt != nil {
+			config.IntelRdt = &configs.IntelRdt{
+				ClosID:        spec.Linux.IntelRdt.ClosID,
+				L3CacheSchema: spec.Linux.IntelRdt.L3CacheSchema,
+				MemBwSchema:   spec.Linux.IntelRdt.MemBwSchema,
+			}
+		}
+	}
+
+	// Set the host UID that should own the container's cgroup.
+	// This must be performed after setupUserNamespace, so that
+	// config.HostRootUID() returns the correct result.
+	//
+	// Only set it if the container will have its own cgroup
+	// namespace and the cgroupfs will be mounted read/write.
+	//
+	hasCgroupNS := config.Namespaces.Contains(configs.NEWCGROUP) && config.Namespaces.PathOf(configs.NEWCGROUP) == ""
+	hasRwCgroupfs := false
+	if hasCgroupNS {
+		for _, m := range config.Mounts {
+			if m.Source == "cgroup" && filepath.Clean(m.Destination) == "/sys/fs/cgroup" && (m.Flags&unix.MS_RDONLY) == 0 {
+				hasRwCgroupfs = true
+				break
+			}
+		}
+	}
+	processUid := 0
+	if spec.Process != nil {
+		// Chown the cgroup to the UID running the process,
+		// which is not necessarily UID 0 in the container
+		// namespace (e.g., an unprivileged UID in the host
+		// user namespace).
+		processUid = int(spec.Process.User.UID)
+	}
+	if hasCgroupNS && hasRwCgroupfs {
+		ownerUid, err := config.HostUID(processUid)
+		//有两种错误情况;我们可以忽略两者。
+		// 1。未设置uid映射。要么没有用户名称空间(很好)，要么是一个错误(在其他地方检查)。
+		// 2。未将用户映射到用户命名空间。这是一个不寻常的配置，可能是一个错误。但它也会在其他地方被检查，所以我们可以忽略它。
+		if err == nil {
+			config.Cgroups.OwnerUID = &ownerUid
+		}
+	}
+
+	if spec.Process != nil {
+		config.OomScoreAdj = spec.Process.OOMScoreAdj
+		config.NoNewPrivileges = spec.Process.NoNewPrivileges
+		config.Umask = spec.Process.User.Umask
+		config.ProcessLabel = spec.Process.SelinuxLabel
+		if spec.Process.Capabilities != nil {
+			config.Capabilities = &configs.Capabilities{
+				Bounding:    spec.Process.Capabilities.Bounding,
+				Effective:   spec.Process.Capabilities.Effective,
+				Permitted:   spec.Process.Capabilities.Permitted,
+				Inheritable: spec.Process.Capabilities.Inheritable,
+				Ambient:     spec.Process.Capabilities.Ambient,
+			}
+		}
+	}
+	createHooks(spec, config)
+	config.Version = specs.Version
+	return config, nil
 }

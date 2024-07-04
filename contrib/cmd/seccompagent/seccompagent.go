@@ -1,7 +1,7 @@
 //go:build linux && seccomp
 // +build linux,seccomp
 
-package main
+package runc
 
 import (
 	"bytes"

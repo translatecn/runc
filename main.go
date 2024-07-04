@@ -1,66 +1,44 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strconv"
-	"strings"
-
+	runc "github.com/opencontainers/runc/cmd"
 	"github.com/opencontainers/runc/libcontainer/seccomp"
 	"github.com/opencontainers/runtime-spec/specs-go"
-
-	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
-)
-
-// version must be set from the contents of VERSION file by go build's
-// -X main.version= option in the Makefile.
-var version = "unknown"
-
-// gitCommit will be the hash that the binary was built from
-// and will be populated by the Makefile
-var gitCommit = ""
-
-const (
-	specConfig = "config.json"
-	usage      = `Open Container Initiative runtime
-
-runc is a command line client for running applications packaged according to
-the Open Container Initiative (OCI) format and is a compliant implementation of the
-Open Container Initiative specification.
-
-runc integrates well with existing process supervisors to provide a production
-container runtime environment for applications. It can be used with your
-existing process monitoring tools and the container will be spawned as a
-direct child of the process supervisor.
-
-Containers are configured using bundles. A bundle for a container is a directory
-that includes a specification file named "` + specConfig + `" and a root filesystem.
-The root filesystem contains the contents of the container.
-
-To start a new instance of a container:
-
-    # runc run [ -b bundle ] <container-id>
-
-Where "<container-id>" is your name for the instance of the container that you
-are starting. The name you provide for the container instance must be unique on
-your host. Providing the bundle directory using "-b" is optional. The default
-value for "bundle" is the current directory.`
+	"os"
+	"runtime"
+	"strings"
 )
 
 func main() {
+	if os.Getenv("_DEBUG") != "" {
+		args := []string{
+			"--root",
+			"/run/containerd/runc/k8s.io",
+			"--log",
+			"/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b4ab941d0abcae2621aa7adcab034552aaf4d23d56798b19a0edb112a97aa77/log.json",
+			"--log-format",
+			"json",
+			"--systemd-cgroup",
+			"create",
+			"--bundle",
+			"/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b4ab941d0abcae2621aa7adcab034552aaf4d23d56798b19a0edb112a97aa77",
+			"--pid-file",
+			"/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b4ab941d0abcae2621aa7adcab034552aaf4d23d56798b19a0edb112a97aa77/init.pid",
+			"4b4ab941d0abcae2621aa7adcab034552aaf4d23d56798b19a0edb112a97aa77",
+		}
+		os.Args = append(os.Args, args...)
+	}
+
 	app := cli.NewApp()
 	app.Name = "runc"
-	app.Usage = usage
+	app.Usage = runc.Usage
 
-	v := []string{version}
+	v := []string{runc.Version}
 
-	if gitCommit != "" {
-		v = append(v, "commit: "+gitCommit)
+	if runc.GitCommit != "" {
+		v = append(v, "commit: "+runc.GitCommit)
 	}
 	v = append(v, "spec: "+specs.Version)
 	v = append(v, "go: "+runtime.Version())
@@ -73,7 +51,7 @@ func main() {
 
 	xdgRuntimeDir := ""
 	root := "/run/runc"
-	if shouldHonorXDGRuntimeDir() {
+	if runc.ShouldHonorXDGRuntimeDir() {
 		if runtimeDir := os.Getenv("XDG_RUNTIME_DIR"); runtimeDir != "" {
 			root = runtimeDir + "/runc"
 			xdgRuntimeDir = root
@@ -116,23 +94,23 @@ func main() {
 		},
 	}
 	app.Commands = []cli.Command{
-		checkpointCommand,
-		createCommand,
-		deleteCommand,
-		eventsCommand,
-		execCommand,
-		killCommand,
-		listCommand,
-		pauseCommand,
-		psCommand,
-		restoreCommand,
-		resumeCommand,
-		runCommand,
-		specCommand,
-		startCommand,
-		stateCommand,
-		updateCommand,
-		featuresCommand,
+		runc.CheckpointCommand,
+		runc.CreateCommand,
+		runc.DeleteCommand,
+		runc.EventsCommand,
+		runc.ExecCommand,
+		runc.KillCommand,
+		runc.ListCommand,
+		runc.PauseCommand,
+		runc.PsCommand,
+		runc.RestoreCommand,
+		runc.ResumeCommand,
+		runc.RunCommand,
+		runc.SpecCommand,
+		runc.StartCommand,
+		runc.StateCommand,
+		runc.UpdateCommand,
+		runc.FeaturesCommand,
 	}
 	app.Before = func(context *cli.Context) error {
 		if !context.IsSet("root") && xdgRuntimeDir != "" {
@@ -141,77 +119,25 @@ func main() {
 			// auto-pruned.
 			if err := os.MkdirAll(root, 0o700); err != nil {
 				fmt.Fprintln(os.Stderr, "the path in $XDG_RUNTIME_DIR must be writable by the user")
-				fatal(err)
+				runc.Fatal(err)
 			}
 			if err := os.Chmod(root, os.FileMode(0o700)|os.ModeSticky); err != nil {
 				fmt.Fprintln(os.Stderr, "you should check permission of the path in $XDG_RUNTIME_DIR")
-				fatal(err)
+				runc.Fatal(err)
 			}
 		}
-		if err := reviseRootDir(context); err != nil {
+		if err := runc.ReviseRootDir(context); err != nil {
 			return err
 		}
 
-		return configLogrus(context)
+		return runc.ConfigLogrus(context)
 	}
 
 	// If the command returns an error, cli takes upon itself to print
 	// the error on cli.ErrWriter and exit.
 	// Use our own writer here to ensure the log gets sent to the right location.
-	cli.ErrWriter = &FatalWriter{cli.ErrWriter}
+	cli.ErrWriter = &runc.FatalWriter{cli.ErrWriter}
 	if err := app.Run(os.Args); err != nil {
-		fatal(err)
+		runc.Fatal(err)
 	}
-}
-
-type FatalWriter struct {
-	cliErrWriter io.Writer
-}
-
-func (f *FatalWriter) Write(p []byte) (n int, err error) {
-	logrus.Error(string(p))
-	if !logrusToStderr() {
-		return f.cliErrWriter.Write(p)
-	}
-	return len(p), nil
-}
-
-func configLogrus(context *cli.Context) error {
-	if context.GlobalBool("debug") {
-		logrus.SetLevel(logrus.DebugLevel)
-		logrus.SetReportCaller(true)
-		// Shorten function and file names reported by the logger, by
-		// trimming common "github.com/opencontainers/runc" prefix.
-		// This is only done for text formatter.
-		_, file, _, _ := runtime.Caller(0)
-		prefix := filepath.Dir(file) + "/"
-		logrus.SetFormatter(&logrus.TextFormatter{
-			CallerPrettyfier: func(f *runtime.Frame) (string, string) {
-				function := strings.TrimPrefix(f.Function, prefix) + "()"
-				fileLine := strings.TrimPrefix(f.File, prefix) + ":" + strconv.Itoa(f.Line)
-				return function, fileLine
-			},
-		})
-	}
-
-	switch f := context.GlobalString("log-format"); f {
-	case "":
-		// do nothing
-	case "text":
-		// do nothing
-	case "json":
-		logrus.SetFormatter(new(logrus.JSONFormatter))
-	default:
-		return errors.New("invalid log-format: " + f)
-	}
-
-	if file := context.GlobalString("log"); file != "" {
-		f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND|os.O_SYNC, 0o644)
-		if err != nil {
-			return err
-		}
-		logrus.SetOutput(f)
-	}
-
-	return nil
 }

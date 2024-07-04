@@ -42,21 +42,6 @@ func ReadFile(dir, file string) (string, error) {
 	return buf.String(), err
 }
 
-// WriteFile writes data to a cgroup file in dir.
-// It is supposed to be used for cgroup files only.
-func WriteFile(dir, file, data string) error {
-	fd, err := OpenFile(dir, file, unix.O_WRONLY)
-	if err != nil {
-		return err
-	}
-	defer fd.Close()
-	if err := retryingWriteFile(fd, data); err != nil {
-		// Having data in the error message helps in debugging.
-		return fmt.Errorf("failed to write %q: %w", data, err)
-	}
-	return nil
-}
-
 func retryingWriteFile(fd *os.File, data string) error {
 	for {
 		_, err := fd.Write([]byte(data))
@@ -189,4 +174,19 @@ func openAndCheck(path string, flags int, mode os.FileMode) (*os.File, error) {
 	}
 
 	return fd, nil
+}
+
+// WriteFile writes data to a cgroup file in dir.
+// It is supposed to be used for cgroup files only.
+func WriteFile(dir, file, data string) error {
+	fd, err := OpenFile(dir, file, unix.O_WRONLY)
+	if err != nil {
+		return err
+	}
+	defer fd.Close()
+	if err := retryingWriteFile(fd, data); err != nil {
+		// Having data in the error message helps in debugging.
+		return fmt.Errorf("failed to write %q: %w", data, err)
+	}
+	return nil
 }

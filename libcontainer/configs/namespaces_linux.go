@@ -21,6 +21,67 @@ var (
 	supportedNamespaces = make(map[NamespaceType]bool)
 )
 
+func (n *Namespaces) Remove(t NamespaceType) bool {
+	i := n.index(t)
+	if i == -1 {
+		return false
+	}
+	*n = append((*n)[:i], (*n)[i+1:]...)
+	return true
+}
+
+func (n *Namespaces) Add(t NamespaceType, path string) {
+	i := n.index(t)
+	if i == -1 {
+		*n = append(*n, Namespace{Type: t, Path: path})
+		return
+	}
+	(*n)[i].Path = path
+}
+
+func (n *Namespaces) index(t NamespaceType) int {
+	for i, ns := range *n {
+		if ns.Type == t {
+			return i
+		}
+	}
+	return -1
+}
+
+func (n *Namespaces) Contains(t NamespaceType) bool {
+	return n.index(t) != -1
+}
+
+func (n *Namespaces) PathOf(t NamespaceType) string {
+	i := n.index(t)
+	if i == -1 {
+		return ""
+	}
+	return (*n)[i].Path
+}
+func NamespaceTypes() []NamespaceType {
+	return []NamespaceType{
+		NEWUSER, // Keep user NS always first, don't move it.
+		NEWIPC,
+		NEWUTS,
+		NEWNET,
+		NEWPID,
+		NEWNS,
+		NEWCGROUP,
+	}
+}
+
+// Namespace defines configuration for each namespace.  It specifies an
+// alternate path that is able to be joined via setns.
+type Namespace struct {
+	Type NamespaceType `json:"type"`
+	Path string        `json:"path"`
+}
+
+func (n *Namespace) GetPath(pid int) string {
+	return fmt.Sprintf("/proc/%d/ns/%s", pid, NsName(n.Type))
+}
+
 // NsName converts the namespace type to its filename
 func NsName(ns NamespaceType) string {
 	switch ns {
@@ -61,66 +122,4 @@ func IsNamespaceSupported(ns NamespaceType) bool {
 	supported = err == nil
 	supportedNamespaces[ns] = supported
 	return supported
-}
-
-func NamespaceTypes() []NamespaceType {
-	return []NamespaceType{
-		NEWUSER, // Keep user NS always first, don't move it.
-		NEWIPC,
-		NEWUTS,
-		NEWNET,
-		NEWPID,
-		NEWNS,
-		NEWCGROUP,
-	}
-}
-
-// Namespace defines configuration for each namespace.  It specifies an
-// alternate path that is able to be joined via setns.
-type Namespace struct {
-	Type NamespaceType `json:"type"`
-	Path string        `json:"path"`
-}
-
-func (n *Namespace) GetPath(pid int) string {
-	return fmt.Sprintf("/proc/%d/ns/%s", pid, NsName(n.Type))
-}
-
-func (n *Namespaces) Remove(t NamespaceType) bool {
-	i := n.index(t)
-	if i == -1 {
-		return false
-	}
-	*n = append((*n)[:i], (*n)[i+1:]...)
-	return true
-}
-
-func (n *Namespaces) Add(t NamespaceType, path string) {
-	i := n.index(t)
-	if i == -1 {
-		*n = append(*n, Namespace{Type: t, Path: path})
-		return
-	}
-	(*n)[i].Path = path
-}
-
-func (n *Namespaces) index(t NamespaceType) int {
-	for i, ns := range *n {
-		if ns.Type == t {
-			return i
-		}
-	}
-	return -1
-}
-
-func (n *Namespaces) Contains(t NamespaceType) bool {
-	return n.index(t) != -1
-}
-
-func (n *Namespaces) PathOf(t NamespaceType) string {
-	i := n.index(t)
-	if i == -1 {
-		return ""
-	}
-	return (*n)[i].Path
 }

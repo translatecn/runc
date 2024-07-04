@@ -37,21 +37,6 @@ var (
 	isRunningSystemd     bool
 )
 
-// NOTE: This function comes from package github.com/coreos/go-systemd/util
-// It was borrowed here to avoid a dependency on cgo.
-//
-// IsRunningSystemd checks whether the host was booted with systemd as its init
-// system. This functions similarly to systemd's `sd_booted(3)`: internally, it
-// checks whether /run/systemd/system/ exists and is a directory.
-// http://www.freedesktop.org/software/systemd/man/sd_booted.html
-func IsRunningSystemd() bool {
-	isRunningSystemdOnce.Do(func() {
-		fi, err := os.Lstat("/run/systemd/system")
-		isRunningSystemd = err == nil && fi.IsDir()
-	})
-	return isRunningSystemd
-}
-
 // systemd represents slice hierarchy using `-`, so we need to follow suit when
 // generating the path of slice. Essentially, test-a-b.slice becomes
 // /test.slice/test-a.slice/test-a-b.slice.
@@ -347,58 +332,6 @@ func isUnitExists(err error) bool {
 	return isDbusError(err, "org.freedesktop.systemd1.UnitExists")
 }
 
-func startUnit(cm *dbusConnManager, unitName string, properties []systemdDbus.Property, ignoreExist bool) error {
-	statusChan := make(chan string, 1)
-	retry := true
-
-retry:
-	err := cm.retryOnDisconnect(func(c *systemdDbus.Conn) error {
-		_, err := c.StartTransientUnitContext(context.TODO(), unitName, "replace", properties, statusChan)
-		return err
-	})
-	if err != nil {
-		if !isUnitExists(err) {
-			return err
-		}
-		if ignoreExist {
-			// TODO: remove this hack.
-			// This is kubelet making sure a slice exists (see
-			// https://github.com/opencontainers/runc/pull/1124).
-			return nil
-		}
-		if retry {
-			// In case a unit with the same name exists, this may
-			// be a leftover failed unit. Reset it, so systemd can
-			// remove it, and retry once.
-			err = resetFailedUnit(cm, unitName)
-			if err != nil {
-				logrus.Warnf("unable to reset failed unit: %v", err)
-			}
-			retry = false
-			goto retry
-		}
-		return err
-	}
-
-	timeout := time.NewTimer(30 * time.Second)
-	defer timeout.Stop()
-
-	select {
-	case s := <-statusChan:
-		close(statusChan)
-		// Please refer to https://pkg.go.dev/github.com/coreos/go-systemd/v22/dbus#Conn.StartUnit
-		if s != "done" {
-			_ = resetFailedUnit(cm, unitName)
-			return fmt.Errorf("error creating systemd unit `%s`: got `%s`", unitName, s)
-		}
-	case <-timeout.C:
-		_ = resetFailedUnit(cm, unitName)
-		return errors.New("Timeout waiting for systemd to create " + unitName)
-	}
-
-	return nil
-}
-
 func stopUnit(cm *dbusConnManager, unitName string) error {
 	statusChan := make(chan string, 1)
 	err := cm.retryOnDisconnect(func(c *systemdDbus.Conn) error {
@@ -560,5 +493,66 @@ func addCpuset(cm *dbusConnManager, props *[]systemdDbus.Property, cpus, mems st
 		*props = append(*props,
 			newProp("AllowedMemoryNodes", bits))
 	}
+	return nil
+}
+
+// IsRunningSystemd 检查主机是否使用systemd作为其init系统启动
+// http://www.freedesktop.org/software/systemd/man/sd_booted.html
+func IsRunningSystemd() bool {
+	isRunningSystemdOnce.Do(func() {
+		fi, err := os.Lstat("/run/systemd/system")
+		isRunningSystemd = err == nil && fi.IsDir()
+	})
+	return isRunningSystemd
+}
+func startUnit(cm *dbusConnManager, unitName string, properties []systemdDbus.Property, ignoreExist bool) error {
+	statusChan := make(chan string, 1)
+	retry := true
+
+retry:
+	err := cm.retryOnDisconnect(func(c *systemdDbus.Conn) error {
+		_, err := c.StartTransientUnitContext(context.TODO(), unitName, "replace", properties, statusChan)
+		return err
+	})
+	if err != nil {
+		if !isUnitExists(err) {
+			return err
+		}
+		if ignoreExist {
+			// TODO: remove this hack.
+			// This is kubelet making sure a slice exists (see
+			// https://github.com/opencontainers/runc/pull/1124).
+			return nil
+		}
+		if retry {
+			// In case a unit with the same name exists, this may
+			// be a leftover failed unit. Reset it, so systemd can
+			// remove it, and retry once.
+			err = resetFailedUnit(cm, unitName)
+			if err != nil {
+				logrus.Warnf("unable to reset failed unit: %v", err)
+			}
+			retry = false
+			goto retry
+		}
+		return err
+	}
+
+	timeout := time.NewTimer(30 * time.Second)
+	defer timeout.Stop()
+
+	select {
+	case s := <-statusChan:
+		close(statusChan)
+		// Please refer to https://pkg.go.dev/github.com/coreos/go-systemd/v22/dbus#Conn.StartUnit
+		if s != "done" {
+			_ = resetFailedUnit(cm, unitName)
+			return fmt.Errorf("error creating systemd unit `%s`: got `%s`", unitName, s)
+		}
+	case <-timeout.C:
+		_ = resetFailedUnit(cm, unitName)
+		return errors.New("Timeout waiting for systemd to create " + unitName)
+	}
+
 	return nil
 }

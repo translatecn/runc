@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/opencontainers/runc/over/logs"
 	"io"
 	"net"
 	"os"
@@ -16,7 +17,6 @@ import (
 	"github.com/opencontainers/runc/libcontainer/cgroups/fs2"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/intelrdt"
-	"github.com/opencontainers/runc/libcontainer/logs"
 	"github.com/opencontainers/runc/libcontainer/system"
 	"github.com/opencontainers/runc/libcontainer/utils"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -46,7 +46,7 @@ type parentProcess interface {
 }
 
 type filePair struct {
-	parent *os.File
+	parent *os.File // 从这里读数据
 	child  *os.File
 }
 
@@ -315,7 +315,6 @@ func (p *initProcess) externalDescriptors() []string {
 	return p.fds
 }
 
-// getChildPid receives the final child's pid over the provided pipe.
 func (p *initProcess) getChildPid() (int, error) {
 	var pid pid
 	if err := json.NewDecoder(p.messageSockPair.parent).Decode(&pid); err != nil {
@@ -365,7 +364,7 @@ func (p *initProcess) start() (retErr error) {
 		return fmt.Errorf("unable to start init: %w", err)
 	}
 
-	waitInit := initWaiter(p.messageSockPair.parent)
+	waitInit := initWaiter(p.messageSockPair.parent) // 等待 runc init 运行，会先发送一个 byte 0
 	defer func() {
 		if retErr != nil {
 			// Find out if init is killed by the kernel's OOM killer.
@@ -408,7 +407,7 @@ func (p *initProcess) start() (retErr error) {
 	// Do this before syncing with child so that no children can escape the
 	// cgroup. We don't need to worry about not doing this and not being root
 	// because we'd be using the rootless cgroup manager in that case.
-	if err := p.manager.Apply(p.pid()); err != nil {
+	if err := p.manager.Apply(p.pid()); err != nil { // 添加systemd unit、创建cgroup
 		return fmt.Errorf("unable to apply cgroup configuration: %w", err)
 	}
 	if p.intelRdtManager != nil {
@@ -685,10 +684,6 @@ func (p *initProcess) setExternalDescriptors(newFds []string) {
 	p.fds = newFds
 }
 
-func (p *initProcess) forwardChildLogs() chan error {
-	return logs.ForwardLogs(p.logFilePair.parent)
-}
-
 func recvSeccompFd(childPid, childFd uintptr) (int, error) {
 	pidfd, _, errno := unix.Syscall(unix.SYS_PIDFD_OPEN, childPid, 0, 0)
 	if errno != 0 {
@@ -793,6 +788,10 @@ func (p *Process) InitializeIO(rootuid, rootgid int) (i *IO, err error) {
 		}
 	}
 	return i, nil
+}
+
+func (p *initProcess) forwardChildLogs() chan error {
+	return logs.ForwardLogs(p.logFilePair.parent) // os.pipe()
 }
 
 // initWaiter returns a channel to wait on for making sure

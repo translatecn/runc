@@ -30,25 +30,6 @@ var (
 	isHybrid      bool
 )
 
-// IsCgroup2UnifiedMode returns whether we are running in cgroup v2 unified mode.
-func IsCgroup2UnifiedMode() bool {
-	isUnifiedOnce.Do(func() {
-		var st unix.Statfs_t
-		err := unix.Statfs(unifiedMountpoint, &st)
-		if err != nil {
-			if os.IsNotExist(err) && userns.RunningInUserNS() {
-				// ignore the "not found" error if running in userns
-				logrus.WithError(err).Debugf("%s missing, assuming cgroup v1", unifiedMountpoint)
-				isUnified = false
-				return
-			}
-			panic(fmt.Sprintf("cannot statfs cgroup root: %s", err))
-		}
-		isUnified = st.Type == unix.CGROUP2_SUPER_MAGIC
-	})
-	return isUnified
-}
-
 // IsCgroup2HybridMode returns whether we are running in cgroup v2 hybrid mode.
 func IsCgroup2HybridMode() bool {
 	isHybridOnce.Do(func() {
@@ -419,6 +400,17 @@ func WriteCgroupProc(dir string, pid int) error {
 
 // Since the OCI spec is designed for cgroup v1, in some cases
 // there is need to convert from the cgroup v1 configuration to cgroup v2
+// the formula for BlkIOWeight to IOWeight is y = (1 + (x - 10) * 9999 / 990)
+// convert linearly from [10-1000] to [1-10000]
+func ConvertBlkIOToIOWeightValue(blkIoWeight uint16) uint64 {
+	if blkIoWeight == 0 {
+		return 0
+	}
+	return 1 + (uint64(blkIoWeight)-10)*9999/990
+}
+
+// Since the OCI spec is designed for cgroup v1, in some cases
+// there is need to convert from the cgroup v1 configuration to cgroup v2
 // the formula for cpuShares is y = (1 + ((x - 2) * 9999) / 262142)
 // convert from [2-262144] to [1-10000]
 // 262144 comes from Linux kernel definition "#define MAX_SHARES (1UL << 18)"
@@ -427,6 +419,25 @@ func ConvertCPUSharesToCgroupV2Value(cpuShares uint64) uint64 {
 		return 0
 	}
 	return (1 + ((cpuShares-2)*9999)/262142)
+}
+
+// IsCgroup2UnifiedMode returns whether we are running in cgroup v2 unified mode.
+func IsCgroup2UnifiedMode() bool {
+	isUnifiedOnce.Do(func() {
+		var st unix.Statfs_t
+		err := unix.Statfs(unifiedMountpoint, &st)
+		if err != nil {
+			if os.IsNotExist(err) && userns.RunningInUserNS() {
+				// ignore the "not found" error if running in userns
+				logrus.WithError(err).Debugf("%s missing, assuming cgroup v1", unifiedMountpoint)
+				isUnified = false
+				return
+			}
+			panic(fmt.Sprintf("cannot statfs cgroup root: %s", err))
+		}
+		isUnified = st.Type == unix.CGROUP2_SUPER_MAGIC
+	})
+	return isUnified
 }
 
 // ConvertMemorySwapToCgroupV2Value converts MemorySwap value from OCI spec
@@ -455,15 +466,4 @@ func ConvertMemorySwapToCgroupV2Value(memorySwap, memory int64) (int64, error) {
 	}
 
 	return memorySwap - memory, nil
-}
-
-// Since the OCI spec is designed for cgroup v1, in some cases
-// there is need to convert from the cgroup v1 configuration to cgroup v2
-// the formula for BlkIOWeight to IOWeight is y = (1 + (x - 10) * 9999 / 990)
-// convert linearly from [10-1000] to [1-10000]
-func ConvertBlkIOToIOWeightValue(blkIoWeight uint16) uint64 {
-	if blkIoWeight == 0 {
-		return 0
-	}
-	return 1 + (uint64(blkIoWeight)-10)*9999/990
 }

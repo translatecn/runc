@@ -71,33 +71,6 @@ func CriuPath(criupath string) func(*LinuxFactory) error {
 	}
 }
 
-// New returns a linux based container factory based in the root directory and
-// configures the factory with the provided option funcs.
-func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
-	if root != "" {
-		if err := os.MkdirAll(root, 0o700); err != nil {
-			return nil, err
-		}
-	}
-	l := &LinuxFactory{
-		Root:      root,
-		InitPath:  "/proc/self/exe",
-		InitArgs:  []string{os.Args[0], "init"},
-		Validator: validate.New(),
-		CriuPath:  "criu",
-	}
-
-	for _, opt := range options {
-		if opt == nil {
-			continue
-		}
-		if err := opt(l); err != nil {
-			return nil, err
-		}
-	}
-	return l, nil
-}
-
 // LinuxFactory implements the default factory interface for linux based systems.
 type LinuxFactory struct {
 	// Root directory for the factory to store state.
@@ -122,88 +95,6 @@ type LinuxFactory struct {
 
 	// Validator provides validation to container configurations.
 	Validator validate.Validator
-}
-
-func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, error) {
-	if l.Root == "" {
-		return nil, errors.New("root not set")
-	}
-	if err := l.validateID(id); err != nil {
-		return nil, err
-	}
-	if err := l.Validator.Validate(config); err != nil {
-		return nil, err
-	}
-	containerRoot, err := securejoin.SecureJoin(l.Root, id)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(containerRoot); err == nil {
-		return nil, ErrExist
-	} else if !os.IsNotExist(err) {
-		return nil, err
-	}
-
-	cm, err := manager.New(config.Cgroups)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check that cgroup does not exist or empty (no processes).
-	// Note for cgroup v1 this check is not thorough, as there are multiple
-	// separate hierarchies, while both Exists() and GetAllPids() only use
-	// one for "devices" controller (assuming others are the same, which is
-	// probably true in almost all scenarios). Checking all the hierarchies
-	// would be too expensive.
-	if cm.Exists() {
-		pids, err := cm.GetAllPids()
-		// Reading PIDs can race with cgroups removal, so ignore ENOENT and ENODEV.
-		if err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, unix.ENODEV) {
-			return nil, fmt.Errorf("unable to get cgroup PIDs: %w", err)
-		}
-		if len(pids) != 0 {
-			if config.Cgroups.Systemd {
-				// systemd cgroup driver can't add a pid to an
-				// existing systemd unit and will return an
-				// error anyway, so let's error out early.
-				return nil, fmt.Errorf("container's cgroup is not empty: %d process(es) found", len(pids))
-			}
-			// TODO: return an error.
-			logrus.Warnf("container's cgroup is not empty: %d process(es) found", len(pids))
-			logrus.Warn("DEPRECATED: running container in a non-empty cgroup won't be supported in runc 1.2; https://github.com/opencontainers/runc/issues/3132")
-		}
-	}
-
-	// Check that cgroup is not frozen. Do not use Exists() here
-	// since in cgroup v1 it only checks "devices" controller.
-	st, err := cm.GetFreezerState()
-	if err != nil {
-		return nil, fmt.Errorf("unable to get cgroup freezer state: %w", err)
-	}
-	if st == configs.Frozen {
-		return nil, errors.New("container's cgroup unexpectedly frozen")
-	}
-
-	if err := os.MkdirAll(containerRoot, 0o711); err != nil {
-		return nil, err
-	}
-	if err := os.Chown(containerRoot, unix.Geteuid(), unix.Getegid()); err != nil {
-		return nil, err
-	}
-	c := &linuxContainer{
-		id:              id,
-		root:            containerRoot,
-		config:          config,
-		initPath:        l.InitPath,
-		initArgs:        l.InitArgs,
-		criuPath:        l.CriuPath,
-		newuidmapPath:   l.NewuidmapPath,
-		newgidmapPath:   l.NewgidmapPath,
-		cgroupManager:   cm,
-		intelRdtManager: intelrdt.NewManager(config, id, ""),
-	}
-	c.state = &stoppedState{c: c}
-	return c, nil
 }
 
 func (l *LinuxFactory) Load(id string) (Container, error) {
@@ -257,11 +148,166 @@ func (l *LinuxFactory) Type() string {
 	return "libcontainer"
 }
 
-// StartInitialization loads a container by opening the pipe fd from the parent to read the configuration and state
-// This is a low level implementation detail of the reexec and should not be consumed externally
+func (l *LinuxFactory) loadState(root string) (*State, error) {
+	stateFilePath, err := securejoin.SecureJoin(root, stateFilename)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(stateFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrNotExist
+		}
+		return nil, err
+	}
+	defer f.Close()
+	var state *State
+	if err := json.NewDecoder(f).Decode(&state); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+// NewuidmapPath returns an option func to configure a LinuxFactory with the
+// provided ..
+func NewuidmapPath(newuidmapPath string) func(*LinuxFactory) error {
+	return func(l *LinuxFactory) error {
+		l.NewuidmapPath = newuidmapPath
+		return nil
+	}
+}
+
+// NewgidmapPath returns an option func to configure a LinuxFactory with the
+// provided ..
+func NewgidmapPath(newgidmapPath string) func(*LinuxFactory) error {
+	return func(l *LinuxFactory) error {
+		l.NewgidmapPath = newgidmapPath
+		return nil
+	}
+}
+
+// New returns a linux based container factory based in the root directory and
+// configures the factory with the provided option funcs.
+func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
+	if root != "" {
+		if err := os.MkdirAll(root, 0o700); err != nil { // /run/containerd/runc/k8s.io
+			return nil, err
+		}
+	}
+	l := &LinuxFactory{
+		Root:      root,
+		InitPath:  "/proc/self/exe", // /usr/bin/runc
+		InitArgs:  []string{os.Args[0], "init"},
+		Validator: validate.New(),
+		// https://blog.csdn.net/qq_43375973/article/details/117387384
+		CriuPath: "criu", // 保存进程状态、恢复
+	}
+
+	for _, opt := range options {
+		if opt == nil {
+			continue
+		}
+		if err := opt(l); err != nil {
+			return nil, err
+		}
+	}
+	return l, nil
+}
+func (l *LinuxFactory) validateID(id string) error {
+	if !idRegex.MatchString(id) || string(os.PathSeparator)+id != utils.CleanPath(string(os.PathSeparator)+id) {
+		return ErrInvalidID
+	}
+
+	return nil
+}
+
+func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, error) {
+	if l.Root == "" {
+		return nil, errors.New("root not set")
+	}
+	if err := l.validateID(id); err != nil {
+		return nil, err
+	}
+	if err := l.Validator.Validate(config); err != nil {
+		return nil, err
+	}
+	containerRoot, err := securejoin.SecureJoin(l.Root, id)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(containerRoot); err == nil {
+		return nil, ErrExist
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	cm, err := manager.New(config.Cgroups)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check that cgroup does not exist or empty (no processes).
+	// Note for cgroup v1 this check is not thorough, as there are multiple
+	// separate hierarchies, while both Exists() and GetAllPids() only use
+	// one for "devices" controller (assuming others are the same, which is
+	// probably true in almost all scenarios). Checking all the hierarchies
+	// would be too expensive.
+	// 检查cgroup不存在或为空（没有进程）。
+	// 注意，对于cgroup v1，此检查并不彻底，因为存在多个独立的层级结构，而Exists()和GetAllPids()只使用一个用于“设备”控制器的层级结构（假设其他层级结构相同，这在几乎所有场景中可能都是正确的）。检查所有层级结构的成本会非常高。
+	if cm.Exists() {
+		pids, err := cm.GetAllPids()
+		// Reading PIDs can race with cgroups removal, so ignore ENOENT and ENODEV.
+		if err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, unix.ENODEV) {
+			return nil, fmt.Errorf("unable to get cgroup PIDs: %w", err)
+		}
+		if len(pids) != 0 {
+			if config.Cgroups.Systemd {
+				// systemd cgroup driver can't add a pid to an
+				// existing systemd unit and will return an
+				// error anyway, so let's error out early.
+				return nil, fmt.Errorf("container's cgroup is not empty: %d process(es) found", len(pids))
+			}
+			// TODO: return an error.
+			logrus.Warnf("container's cgroup is not empty: %d process(es) found", len(pids))
+			logrus.Warn("DEPRECATED: running container in a non-empty cgroup won't be supported in runc 1.2; https://github.com/opencontainers/runc/issues/3132")
+		}
+	}
+
+	st, err := cm.GetFreezerState()
+	if err != nil {
+		return nil, fmt.Errorf("unable to get cgroup freezer state: %w", err)
+	}
+	if st == configs.Frozen {
+		return nil, errors.New("container's cgroup unexpectedly frozen")
+	}
+	// /run/containerd/runc/k8s.io/fb4d778baa3b39a775ffc61e071f7c7998e602a0772486242693b54583aace09
+	if err := os.MkdirAll(containerRoot, 0o711); err != nil {
+		return nil, err
+	}
+	if err := os.Chown(containerRoot, unix.Geteuid(), unix.Getegid()); err != nil {
+		return nil, err
+	}
+	c := &linuxContainer{
+		id:              id,
+		root:            containerRoot,
+		config:          config,
+		initPath:        l.InitPath,
+		initArgs:        l.InitArgs,
+		criuPath:        l.CriuPath,
+		newuidmapPath:   l.NewuidmapPath,
+		newgidmapPath:   l.NewgidmapPath,
+		cgroupManager:   cm,
+		intelRdtManager: intelrdt.NewManager(config, id, ""),
+	}
+	c.state = &stoppedState{c: c}
+	return c, nil
+}
+
+// StartInitialization 通过从父容器打开管道fd读取配置和状态来加载容器
+// 这是 reexec 的底层实现细节，不应该被外部使用
 func (l *LinuxFactory) StartInitialization() (err error) {
 	// Get the INITPIPE.
-	envInitPipe := os.Getenv("_LIBCONTAINER_INITPIPE")
+	envInitPipe := os.Getenv("_LIBCONTAINER_INITPIPE") // 3  NewSockPair      init-c    3
 	pipefd, err := strconv.Atoi(envInitPipe)
 	if err != nil {
 		err = fmt.Errorf("unable to convert _LIBCONTAINER_INITPIPE: %w", err)
@@ -286,10 +332,11 @@ func (l *LinuxFactory) StartInitialization() (err error) {
 
 	// Only init processes have FIFOFD.
 	fifofd := -1
-	envInitType := os.Getenv("_LIBCONTAINER_INITTYPE")
+	envInitType := os.Getenv("_LIBCONTAINER_INITTYPE") // standard
 	it := initType(envInitType)
 	if it == initStandard {
-		envFifoFd := os.Getenv("_LIBCONTAINER_FIFOFD")
+		// /run/containerd/runc/k8s.io/425f28daf8c6dd7935d6a748dce42e505e002d61e871b4c6919902bf7f6651ed/exec.fifo
+		envFifoFd := os.Getenv("_LIBCONTAINER_FIFOFD") // 5
 		if fifofd, err = strconv.Atoi(envFifoFd); err != nil {
 			return fmt.Errorf("unable to convert _LIBCONTAINER_FIFOFD: %w", err)
 		}
@@ -305,7 +352,7 @@ func (l *LinuxFactory) StartInitialization() (err error) {
 		defer consoleSocket.Close()
 	}
 
-	logPipeFdStr := os.Getenv("_LIBCONTAINER_LOGPIPE")
+	logPipeFdStr := os.Getenv("_LIBCONTAINER_LOGPIPE") // os.Pipe()        |1        4
 	logPipeFd, err := strconv.Atoi(logPipeFdStr)
 	if err != nil {
 		return fmt.Errorf("unable to convert _LIBCONTAINER_LOGPIPE: %w", err)
@@ -338,52 +385,6 @@ func (l *LinuxFactory) StartInitialization() (err error) {
 
 	// If Init succeeds, syscall.Exec will not return, hence none of the defers will be called.
 	return i.Init()
-}
-
-func (l *LinuxFactory) loadState(root string) (*State, error) {
-	stateFilePath, err := securejoin.SecureJoin(root, stateFilename)
-	if err != nil {
-		return nil, err
-	}
-	f, err := os.Open(stateFilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, ErrNotExist
-		}
-		return nil, err
-	}
-	defer f.Close()
-	var state *State
-	if err := json.NewDecoder(f).Decode(&state); err != nil {
-		return nil, err
-	}
-	return state, nil
-}
-
-func (l *LinuxFactory) validateID(id string) error {
-	if !idRegex.MatchString(id) || string(os.PathSeparator)+id != utils.CleanPath(string(os.PathSeparator)+id) {
-		return ErrInvalidID
-	}
-
-	return nil
-}
-
-// NewuidmapPath returns an option func to configure a LinuxFactory with the
-// provided ..
-func NewuidmapPath(newuidmapPath string) func(*LinuxFactory) error {
-	return func(l *LinuxFactory) error {
-		l.NewuidmapPath = newuidmapPath
-		return nil
-	}
-}
-
-// NewgidmapPath returns an option func to configure a LinuxFactory with the
-// provided ..
-func NewgidmapPath(newgidmapPath string) func(*LinuxFactory) error {
-	return func(l *LinuxFactory) error {
-		l.NewgidmapPath = newgidmapPath
-		return nil
-	}
 }
 
 func parseMountFds() ([]int, error) {
