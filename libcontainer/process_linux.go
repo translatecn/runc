@@ -46,23 +46,24 @@ type parentProcess interface {
 }
 
 type filePair struct {
-	parent *os.File // 从这里读数据
+	parent *os.File
 	child  *os.File
 }
 
 type setnsProcess struct {
-	cmd             *exec.Cmd
-	messageSockPair filePair
-	logFilePair     filePair
-	cgroupPaths     map[string]string
-	rootlessCgroups bool
-	manager         cgroups.Manager
-	intelRdtPath    string
-	config          *initConfig
-	fds             []string
-	process         *Process
-	bootstrapData   io.Reader
-	initProcessPid  int
+	cmd               *exec.Cmd
+	messageSockPair   filePair
+	logFilePair       filePair
+	cgroupPaths       map[string]string
+	rootlessCgroups   bool
+	manager           cgroups.Manager
+	intelRdtPath      string
+	config            *initConfig
+	fds               []string
+	process           *Process
+	bootstrapData     io.Reader
+	bootstrapDataJson io.Reader
+	initProcessPid    int
 }
 
 func (p *setnsProcess) startTime() (uint64, error) {
@@ -294,17 +295,18 @@ func (p *setnsProcess) forwardChildLogs() chan error {
 }
 
 type initProcess struct {
-	cmd             *exec.Cmd
-	messageSockPair filePair
-	logFilePair     filePair
-	config          *initConfig
-	manager         cgroups.Manager
-	intelRdtManager *intelrdt.Manager
-	container       *linuxContainer
-	fds             []string
-	process         *Process
-	bootstrapData   io.Reader
-	sharePidns      bool
+	cmd               *exec.Cmd
+	messageSockPair   filePair
+	logFilePair       filePair
+	config            *initConfig
+	manager           cgroups.Manager
+	intelRdtManager   *intelrdt.Manager
+	container         *linuxContainer
+	fds               []string
+	process           *Process
+	bootstrapData     io.Reader
+	bootstrapDataJson io.Reader
+	sharePidns        bool
 }
 
 func (p *initProcess) pid() int {
@@ -354,6 +356,7 @@ func (p *initProcess) waitForChildExit(childPid int) error {
 
 func (p *initProcess) start() (retErr error) {
 	defer p.messageSockPair.parent.Close() //nolint: errcheck
+	os.Remove("/tmp/runc.init")
 	err := p.cmd.Start()
 	p.process.ops = p
 	// close the write-side of the pipes (controlled by child)
@@ -441,7 +444,20 @@ func (p *initProcess) start() (retErr error) {
 	if err := p.waitForChildExit(childPid); err != nil {
 		return fmt.Errorf("error waiting for our first child to exit: %w", err)
 	}
+	go func() {
+		args := []string{
+			"--listen=:32345", "--headless=true", "--api-version=2", "attach",
+			fmt.Sprintf("%d", childPid),
+		}
+		cmd := exec.Command("dlv", args...)
+		cmd.Run()
+	}()
 
+	//lrwxrwxrwx 1 root root 0 7月   8 13:37 ipc -> 'ipc:[4026532943]'
+	//lrwxrwxrwx 1 root root 0 7月   8 13:37 mnt -> 'mnt:[4026532941]'
+	//lrwxrwxrwx 1 root root 0 7月   8 13:37 net -> 'net:[4026532821]'
+	//lrwxrwxrwx 1 root root 0 7月   8 13:37 pid -> 'pid:[4026532944]'
+	//lrwxrwxrwx 1 root root 0 7月   8 13:37 pid_for_children -> 'pid:[4026532944]'
 	if err := p.createNetworkInterfaces(); err != nil {
 		return fmt.Errorf("error creating network interfaces: %w", err)
 	}
@@ -648,13 +664,6 @@ func (p *initProcess) updateSpecState() error {
 	return nil
 }
 
-func (p *initProcess) sendConfig() error {
-	// send the config to the container's init process, we don't use JSON Encode
-	// here because there might be a problem in JSON decoder in some cases, see:
-	// https://github.com/docker/docker/issues/14203#issuecomment-174177790
-	return utils.WriteJSON(p.messageSockPair.parent, p.config)
-}
-
 func (p *initProcess) createNetworkInterfaces() error {
 	for _, config := range p.config.Config.Networks {
 		strategy, err := getStrategy(config.Type)
@@ -817,4 +826,10 @@ func initWaiter(r io.Reader) chan error {
 	}()
 
 	return ch
+}
+func (p *initProcess) sendConfig() error {
+	// send the config to the container's init process, we don't use JSON Encode
+	// here because there might be a problem in JSON decoder in some cases, see:
+	// https://github.com/docker/docker/issues/14203#issuecomment-174177790
+	return utils.WriteJSON(p.messageSockPair.parent, p.config)
 }

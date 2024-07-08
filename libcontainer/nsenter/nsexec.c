@@ -84,9 +84,9 @@ struct nlconfig_t {
 
     /* Rootless container settings. */
     uint8_t is_rootless_euid; /* boolean */
-    char *uidmappath;// 二进制文件的路径
+    char *uidmappath;         // 二进制文件的路径
     size_t uidmappath_len;
-    char *gidmappath;// 二进制文件的路径
+    char *gidmappath; // 二进制文件的路径
     size_t gidmappath_len;
 
     /* Mount sources opened outside the container userns. */
@@ -168,7 +168,8 @@ static void write_log(int level, const char *format, ...) {
         stage = strdup("nsexec");
         if (stage == NULL)
             goto out;
-    } else {
+    }
+    else {
         ret = asprintf(&stage, "nsexec-%d", current_stage);
         if (ret < 0) {
             stage = NULL;
@@ -186,7 +187,7 @@ static void write_log(int level, const char *format, ...) {
      */
     ssize_t __attribute__((unused)) __res = write(logfd, json, ret);
 
-    out:
+out:
     free(message);
     free(stage);
     free(json);
@@ -226,7 +227,7 @@ static int write_file(char *data, size_t data_len, char *pathfmt, ...) {
         goto out;
     }
 
-    out:
+out:
     close(fd);
     return ret;
 }
@@ -329,11 +330,11 @@ static int try_mapping_tool(const char *binpath, int pid, char *map, size_t map_
 
         snprintf(pid_fmt, 16, "%d", pid);
 
-        argv[argc++] = (char *) binpath;
+        argv[argc++] = (char *)binpath;
         argv[argc++] = pid_fmt;
         // newuidmap $(pidof runc:[1:CHILD]) ContainerID_0 ContainerID_1
 
-//        fmt.Sprintf("%d %d %d\n", im.ContainerID, im.HostID, im.Size)
+        //        fmt.Sprintf("%d %d %d\n", im.ContainerID, im.HostID, im.Size)
         while (argc < MAX_ARGV) {
             if (*map == '\0') {
                 argv[argc++] = NULL;
@@ -344,12 +345,13 @@ static int try_mapping_tool(const char *binpath, int pid, char *map, size_t map_
             if (next == NULL)
                 break;
             *next++ = '\0';
-            map = next + strspn(next, "\n ");// 获取的 ContainerID
+            map = next + strspn(next, "\n "); // 获取的 ContainerID
         }
 
         execve(binpath, argv, envp);
         bail("failed to execv");
-    } else {
+    }
+    else {
         // 当进程
         int status;
 
@@ -411,7 +413,7 @@ static void update_oom_score_adj(char *data, size_t len) {
 static int child_func(void *arg) __attribute__((noinline));
 
 static int child_func(void *arg) {
-    struct clone_t *ca = (struct clone_t *) arg;
+    struct clone_t *ca = (struct clone_t *)arg;
     longjmp(*ca->env, ca->jmpval);
 }
 
@@ -419,8 +421,8 @@ static int clone_parent(jmp_buf *env, int jmpval) __attribute__((noinline));
 
 static int clone_parent(jmp_buf *env, int jmpval) {
     struct clone_t ca = {
-            .env = env,
-            .jmpval = jmpval,
+        .env = env,
+        .jmpval = jmpval,
     };
     //    clone 函数它主要用于创建新的进程（也包括线程，因为线程是“特殊”的进程），调用成功后，返回子进程的 tid，如果失败，则返回 -1，并将错误码设置再 errno。
     //    clone 函数的第1个参数fn是一个函数指针；第2个参数child_stack是用于创建子进程的栈(注意需要将栈的高地址传入）；第3个参数flags，就是用于指定行为的参数了。
@@ -451,11 +453,11 @@ static int nsflag(char *name) {
 }
 
 static uint32_t readint32(char *buf) {
-    return *(uint32_t *) buf;
+    return *(uint32_t *)buf;
 }
 
 static uint8_t readint8(char *buf) {
-    return *(uint8_t *) buf;
+    return *(uint8_t *)buf;
 }
 
 // ✅✅✅✅✅✅✅✅
@@ -488,7 +490,7 @@ static void nl_parse(int fd, struct nlconfig_t *config) {
     /* Parse the netlink payload. */
     config->data = data;
     while (current < data + size) {
-        struct nlattr *nlattr = (struct nlattr *) current;
+        struct nlattr *nlattr = (struct nlattr *)current;
         size_t payload_len = nlattr->nla_len - NLA_HDRLEN;
 
         /* Advance to payload. */
@@ -668,7 +670,7 @@ void receive_fd(int sockfd, int new_fd) {
     if (fd_count != 1)
         bail("received control message from unix socket %d with too many fds: %d", sockfd, fd_count);
 
-    fd_payload = (int *) CMSG_DATA(cmsg);
+    fd_payload = (int *)CMSG_DATA(cmsg);
     ret = dup3(*fd_payload, new_fd, O_CLOEXEC);
     if (ret < 0)
         bail("cannot dup3 fd %d to %d", *fd_payload, new_fd);
@@ -813,7 +815,7 @@ void try_unshare(int flags, const char *msg) { // 创建独立的命名空间
     write_log(DEBUG, "unshare %s", msg);
     int retries = 5;
     for (; retries > 0; retries--) {
-        if (unshare(flags) == 0) {
+        if (unshare(flags) == 0) { // 🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆🏆
             return;
         }
         if (errno != EINVAL)
@@ -838,7 +840,6 @@ void nsexec(void) {
     if (ensure_cloned_binary() < 0) {
         bail("不能确保我们是克隆的二进制文件");
     }
-
     /*
      * Inform the parent we're past initial setup.
      * For the other side of this, see initWaiter.
@@ -878,7 +879,7 @@ void nsexec(void) {
             bool stage1_complete, stage2_complete;
 
             /* For debugging. */
-            prctl(PR_SET_NAME, (unsigned long) "runc:[0:PARENT]", 0, 0, 0); // 设置进程名，可以top 看到
+            prctl(PR_SET_NAME, (unsigned long)"runc:[0:PARENT]", 0, 0, 0); // 设置进程名，可以top 看到
             write_log(DEBUG, "~> nsexec stage-0");
 
             /* Start the process of getting a container. */
@@ -1006,8 +1007,7 @@ void nsexec(void) {
             write_log(DEBUG, "<- stage-2 synchronisation loop");
             write_log(DEBUG, "<~ nsexec stage-0");
             exit(0);
-        }
-            break;
+        } break;
 
             /*
              * Stage 1: We're in the first child process. Our job is to join any
@@ -1028,7 +1028,7 @@ void nsexec(void) {
                 bail("failed to close sync_child_pipe[1] fd");
 
             /* For debugging. */
-            prctl(PR_SET_NAME, (unsigned long) "runc:[1:CHILD]", 0, 0, 0);
+            prctl(PR_SET_NAME, (unsigned long)"runc:[1:CHILD]", 0, 0, 0);
             write_log(DEBUG, "~> nsexec stage-1");
 
             // 我们需要先设置命名空间。我们不能更早地这样做（在阶段0），
@@ -1036,7 +1036,7 @@ void nsexec(void) {
             // 我们可以使用cmsg(3)来发送它，但这确实很烦人。
 
             if (config.namespaces) {
-                join_namespaces(config.namespaces);
+                join_namespaces(config.namespaces); // setns  切换网络名称空间
             }
 
             if (config.cloneflags & CLONE_NEWUSER) {
@@ -1084,7 +1084,7 @@ void nsexec(void) {
 
             try_unshare(config.cloneflags & ~CLONE_NEWCGROUP, "remaining namespaces (except cgroupns)");
 
-//             ✅
+            //             ✅
             if (config.mountsources) {
                 s = SYNC_MOUNTSOURCES_PLS;
                 if (write(syncfd, &s, sizeof(s)) != sizeof(s)) {
@@ -1152,8 +1152,7 @@ void nsexec(void) {
             /* Our work is done. [Stage 2: STAGE_INIT] is doing the rest of the work. */
             write_log(DEBUG, "<~ nsexec stage-1");
             exit(0);
-        }
-            break;
+        } break;
 
             /*
              * Stage 2: We're the final child process, and the only process that will
@@ -1177,7 +1176,7 @@ void nsexec(void) {
                 bail("failed to close sync_child_pipe[0] fd");
 
             /* For debugging. */
-            prctl(PR_SET_NAME, (unsigned long) "runc:[2:INIT]", 0, 0, 0);
+            prctl(PR_SET_NAME, (unsigned long)"runc:[2:INIT]", 0, 0, 0);
             write_log(DEBUG, "~> nsexec stage-2");
 
             if (read(syncfd, &s, sizeof(s)) != sizeof(s))
@@ -1219,8 +1218,7 @@ void nsexec(void) {
             write_log(DEBUG, "<= nsexec container setup");
             write_log(DEBUG, "booting up go runtime ...");
             return;
-        }
-            break;
+        } break;
         default:
             bail("unknown stage '%d' for jump value", current_stage);
     }

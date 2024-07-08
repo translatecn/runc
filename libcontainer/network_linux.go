@@ -25,16 +25,6 @@ type networkStrategy interface {
 	attach(*configs.Network) error
 }
 
-// getStrategy returns the specific network strategy for the
-// provided type.
-func getStrategy(tpe string) (networkStrategy, error) {
-	s, exists := strategies[tpe]
-	if !exists {
-		return nil, fmt.Errorf("unknown strategy type %q", tpe)
-	}
-	return s, nil
-}
-
 // Returns the network statistics for the network interfaces represented by the NetworkRuntimeInfo.
 func getNetworkInterfaceStats(interfaceName string) (*types.NetworkInterface, error) {
 	out := &types.NetworkInterface{Name: interfaceName}
@@ -87,14 +77,23 @@ func (l *loopback) create(n *network, nspid int) error {
 	return nil
 }
 
-func (l *loopback) initialize(config *network) error {
-	return netlink.LinkSetUp(&netlink.Device{LinkAttrs: netlink.LinkAttrs{Name: "lo"}})
-}
-
 func (l *loopback) attach(n *configs.Network) (err error) {
 	return nil
 }
 
 func (l *loopback) detach(n *configs.Network) (err error) {
 	return nil
+}
+
+// getStrategy returns the specific network strategy for the
+// provided type.
+func getStrategy(tpe string) (networkStrategy, error) {
+	s, exists := strategies[tpe]
+	if !exists {
+		return nil, fmt.Errorf("unknown strategy type %q", tpe)
+	}
+	return s, nil
+}
+func (l *loopback) initialize(config *network) error {
+	return netlink.LinkSetUp(&netlink.Device{LinkAttrs: netlink.LinkAttrs{Name: "lo"}})
 }

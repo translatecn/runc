@@ -3,6 +3,7 @@ package logs
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/sirupsen/logrus"
@@ -52,5 +53,6 @@ func processEntry(text []byte, logger *logrus.Logger) {
 		return
 	}
 
+	fmt.Println(jl.Level, jl.Msg)
 	logger.Log(jl.Level, jl.Msg)
 }

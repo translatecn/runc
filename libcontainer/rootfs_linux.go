@@ -38,16 +38,6 @@ type mountConfig struct {
 	fd              *int
 }
 
-// needsSetupDev returns true if /dev needs to be set up.
-func needsSetupDev(config *configs.Config) bool {
-	for _, m := range config.Mounts {
-		if m.Device == "bind" && utils.CleanPath(m.Destination) == "/dev" {
-			return false
-		}
-	}
-	return true
-}
-
 // prepareRootfs sets up the devices, mount points, and filesystems for use
 // inside a new mount namespace. It doesn't set anything as ro. You must call
 // finalizeRootfs after this function to finish setting up the rootfs.
@@ -194,66 +184,6 @@ func finalizeRootfs(config *configs.Config) (err error) {
 	return nil
 }
 
-// /tmp has to be mounted as private to allow MS_MOVE to work in all situations
-func prepareTmp(topTmpDir string) (string, error) {
-	tmpdir, err := os.MkdirTemp(topTmpDir, "runctop")
-	if err != nil {
-		return "", err
-	}
-	if err := mount(tmpdir, tmpdir, "", "bind", unix.MS_BIND, ""); err != nil {
-		return "", err
-	}
-	if err := mount("", tmpdir, "", "", uintptr(unix.MS_PRIVATE), ""); err != nil {
-		return "", err
-	}
-	return tmpdir, nil
-}
-
-func cleanupTmp(tmpdir string) {
-	_ = unix.Unmount(tmpdir, 0)
-	_ = os.RemoveAll(tmpdir)
-}
-
-func mountCmd(cmd configs.Command) error {
-	command := exec.Command(cmd.Path, cmd.Args[:]...)
-	command.Env = cmd.Env
-	command.Dir = cmd.Dir
-	if out, err := command.CombinedOutput(); err != nil {
-		return fmt.Errorf("%#v failed: %s: %w", cmd, string(out), err)
-	}
-	return nil
-}
-
-func prepareBindMount(m *configs.Mount, rootfs string, mountFd *int) error {
-	source := m.Source
-	if mountFd != nil {
-		source = "/proc/self/fd/" + strconv.Itoa(*mountFd)
-	}
-
-	stat, err := os.Stat(source)
-	if err != nil {
-		// error out if the source of a bind mount does not exist as we will be
-		// unable to bind anything to it.
-		return err
-	}
-	// ensure that the destination of the bind mount is resolved of symlinks at mount time because
-	// any previous mounts can invalidate the next mount's destination.
-	// this can happen when a user specifies mounts within other mounts to cause breakouts or other
-	// evil stuff to try to escape the container's rootfs.
-	var dest string
-	if dest, err = securejoin.SecureJoin(rootfs, m.Destination); err != nil {
-		return err
-	}
-	if err := checkProcMount(rootfs, dest, source); err != nil {
-		return err
-	}
-	if err := createIfNotExists(dest, stat.IsDir()); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func mountCgroupV1(m *configs.Mount, c *mountConfig) error {
 	binds, err := getCgroupMounts(m)
 	if err != nil {
@@ -364,163 +294,6 @@ func mountCgroupV2(m *configs.Mount, c *mountConfig) error {
 		})
 	}
 	return err
-}
-
-func doTmpfsCopyUp(m *configs.Mount, rootfs, mountLabel string) (Err error) {
-	// Set up a scratch dir for the tmpfs on the host.
-	tmpdir, err := prepareTmp("/tmp")
-	if err != nil {
-		return fmt.Errorf("tmpcopyup: failed to setup tmpdir: %w", err)
-	}
-	defer cleanupTmp(tmpdir)
-	tmpDir, err := os.MkdirTemp(tmpdir, "runctmpdir")
-	if err != nil {
-		return fmt.Errorf("tmpcopyup: failed to create tmpdir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Configure the *host* tmpdir as if it's the container mount. We change
-	// m.Destination since we are going to mount *on the host*.
-	oldDest := m.Destination
-	m.Destination = tmpDir
-	err = mountPropagate(m, "/", mountLabel, nil)
-	m.Destination = oldDest
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if Err != nil {
-			if err := unmount(tmpDir, unix.MNT_DETACH); err != nil {
-				logrus.Warnf("tmpcopyup: %v", err)
-			}
-		}
-	}()
-
-	return utils.WithProcfd(rootfs, m.Destination, func(procfd string) (Err error) {
-		// Copy the container data to the host tmpdir. We append "/" to force
-		// CopyDirectory to resolve the symlink rather than trying to copy the
-		// symlink itself.
-		if err := fileutils.CopyDirectory(procfd+"/", tmpDir); err != nil {
-			return fmt.Errorf("tmpcopyup: failed to copy %s to %s (%s): %w", m.Destination, procfd, tmpDir, err)
-		}
-		// Now move the mount into the container.
-		if err := mount(tmpDir, m.Destination, procfd, "", unix.MS_MOVE, ""); err != nil {
-			return fmt.Errorf("tmpcopyup: failed to move mount: %w", err)
-		}
-		return nil
-	})
-}
-
-func mountToRootfs(m *configs.Mount, c *mountConfig) error {
-	rootfs := c.root
-
-	// procfs and sysfs are special because we need to ensure they are actually
-	// mounted on a specific path in a container without any funny business.
-	switch m.Device {
-	case "proc", "sysfs":
-		// If the destination already exists and is not a directory, we bail
-		// out. This is to avoid mounting through a symlink or similar -- which
-		// has been a "fun" attack scenario in the past.
-		// TODO: This won't be necessary once we switch to libpathrs and we can
-		//       stop all of these symlink-exchange attacks.
-		dest := filepath.Clean(m.Destination)
-		if !strings.HasPrefix(dest, rootfs) {
-			// Do not use securejoin as it resolves symlinks.
-			dest = filepath.Join(rootfs, dest)
-		}
-		if fi, err := os.Lstat(dest); err != nil {
-			if !os.IsNotExist(err) {
-				return err
-			}
-		} else if !fi.IsDir() {
-			return fmt.Errorf("filesystem %q must be mounted on ordinary directory", m.Device)
-		}
-		if err := os.MkdirAll(dest, 0o755); err != nil {
-			return err
-		}
-		// Selinux kernels do not support labeling of /proc or /sys.
-		return mountPropagate(m, rootfs, "", nil)
-	}
-
-	mountLabel := c.label
-	mountFd := c.fd
-	dest, err := securejoin.SecureJoin(rootfs, m.Destination)
-	if err != nil {
-		return err
-	}
-
-	switch m.Device {
-	case "mqueue":
-		if err := os.MkdirAll(dest, 0o755); err != nil {
-			return err
-		}
-		if err := mountPropagate(m, rootfs, "", nil); err != nil {
-			return err
-		}
-		return label.SetFileLabel(dest, mountLabel)
-	case "tmpfs":
-		if stat, err := os.Stat(dest); err != nil {
-			if err := os.MkdirAll(dest, 0o755); err != nil {
-				return err
-			}
-		} else {
-			dt := fmt.Sprintf("mode=%04o", syscallMode(stat.Mode()))
-			if m.Data != "" {
-				dt = dt + "," + m.Data
-			}
-			m.Data = dt
-		}
-
-		if m.Extensions&configs.EXT_COPYUP == configs.EXT_COPYUP {
-			err = doTmpfsCopyUp(m, rootfs, mountLabel)
-		} else {
-			err = mountPropagate(m, rootfs, mountLabel, nil)
-		}
-
-		return err
-	case "bind":
-		if err := prepareBindMount(m, rootfs, mountFd); err != nil {
-			return err
-		}
-		if err := mountPropagate(m, rootfs, mountLabel, mountFd); err != nil {
-			return err
-		}
-		// bind mount won't change mount options, we need remount to make mount options effective.
-		// first check that we have non-default options required before attempting a remount
-		if m.Flags&^(unix.MS_REC|unix.MS_REMOUNT|unix.MS_BIND) != 0 {
-			// only remount if unique mount options are set
-			if err := remount(m, rootfs, mountFd); err != nil {
-				return err
-			}
-		}
-
-		if m.Relabel != "" {
-			if err := label.Validate(m.Relabel); err != nil {
-				return err
-			}
-			shared := label.IsShared(m.Relabel)
-			if err := label.Relabel(m.Source, mountLabel, shared); err != nil {
-				return err
-			}
-		}
-	case "cgroup":
-		if cgroups.IsCgroup2UnifiedMode() {
-			return mountCgroupV2(m, c)
-		}
-		return mountCgroupV1(m, c)
-	default:
-		if err := checkProcMount(rootfs, dest, m.Source); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(dest, 0o755); err != nil {
-			return err
-		}
-		return mountPropagate(m, rootfs, mountLabel, mountFd)
-	}
-	if err := setRecAttr(m, rootfs); err != nil {
-		return err
-	}
-	return nil
 }
 
 func getCgroupMounts(m *configs.Mount) ([]*configs.Mount, error) {
@@ -764,61 +537,12 @@ func mknodDevice(dest string, node *devices.Device) error {
 	return os.Chown(dest, int(node.Uid), int(node.Gid))
 }
 
-// Get the parent mount point of directory passed in as argument. Also return
-// optional fields.
-func getParentMount(rootfs string) (string, string, error) {
-	mi, err := mountinfo.GetMounts(mountinfo.ParentsFilter(rootfs))
-	if err != nil {
-		return "", "", err
-	}
-	if len(mi) < 1 {
-		return "", "", fmt.Errorf("could not find parent mount of %s", rootfs)
-	}
-
-	// find the longest mount point
-	var idx, maxlen int
-	for i := range mi {
-		if len(mi[i].Mountpoint) > maxlen {
-			maxlen = len(mi[i].Mountpoint)
-			idx = i
-		}
-	}
-	return mi[idx].Mountpoint, mi[idx].Optional, nil
-}
-
-// Make parent mount private if it was shared
-func rootfsParentMountPrivate(rootfs string) error {
-	sharedMount := false
-
-	parentMount, optionalOpts, err := getParentMount(rootfs)
-	if err != nil {
-		return err
-	}
-
-	optsSplit := strings.Split(optionalOpts, " ")
-	for _, opt := range optsSplit {
-		if strings.HasPrefix(opt, "shared:") {
-			sharedMount = true
-			break
-		}
-	}
-
-	// Make parent mount PRIVATE if it was shared. It is needed for two
-	// reasons. First of all pivot_root() will fail if parent mount is
-	// shared. Secondly when we bind mount rootfs it will propagate to
-	// parent namespace and we don't want that to happen.
-	if sharedMount {
-		return mount("", parentMount, "", "", unix.MS_PRIVATE, "")
-	}
-
-	return nil
-}
-
 func prepareRoot(config *configs.Config) error {
 	flag := unix.MS_SLAVE | unix.MS_REC
 	if config.RootPropagation != 0 {
 		flag = config.RootPropagation
 	}
+	// https://zhuanlan.zhihu.com/p/401057262
 	if err := mount("", "/", "", "", uintptr(flag), ""); err != nil {
 		return err
 	}
@@ -829,7 +553,7 @@ func prepareRoot(config *configs.Config) error {
 	if err := rootfsParentMountPrivate(config.Rootfs); err != nil {
 		return err
 	}
-
+	// /run/containerd/io.containerd.runtime.v2.task/k8s.io/f071e69bd1243fab9c297854ef5ad35fc7d0a8049bd2214f4dfdeb2abefd9d76/rootfs
 	return mount(config.Rootfs, config.Rootfs, "", "bind", unix.MS_BIND|unix.MS_REC, "")
 }
 
@@ -1107,6 +831,195 @@ func remount(m *configs.Mount, rootfs string, mountFd *int) error {
 	})
 }
 
+func setRecAttr(m *configs.Mount, rootfs string) error {
+	if m.RecAttr == nil {
+		return nil
+	}
+	return utils.WithProcfd(rootfs, m.Destination, func(procfd string) error {
+		return unix.MountSetattr(-1, procfd, unix.AT_RECURSIVE, m.RecAttr)
+	})
+}
+
+// Get the parent mount point of directory passed in as argument. Also return
+// optional fields.
+func getParentMount(rootfs string) (string, string, error) {
+	mi, err := mountinfo.GetMounts(mountinfo.ParentsFilter(rootfs))
+	if err != nil {
+		return "", "", err
+	}
+	if len(mi) < 1 {
+		return "", "", fmt.Errorf("could not find parent mount of %s", rootfs)
+	}
+
+	// find the longest mount point
+	var idx, maxlen int
+	for i := range mi {
+		if len(mi[i].Mountpoint) > maxlen {
+			maxlen = len(mi[i].Mountpoint)
+			idx = i
+		}
+	}
+	return mi[idx].Mountpoint, mi[idx].Optional, nil
+}
+
+// 如果父挂载是共享的，则将其设置为私有
+func rootfsParentMountPrivate(rootfs string) error {
+	sharedMount := false
+
+	parentMount, optionalOpts, err := getParentMount(rootfs)
+	if err != nil {
+		return err
+	}
+
+	optsSplit := strings.Split(optionalOpts, " ")
+	for _, opt := range optsSplit {
+		if strings.HasPrefix(opt, "shared:") {
+			sharedMount = true
+			break
+		}
+	}
+
+	// Make parent mount PRIVATE if it was shared. It is needed for two
+	// reasons. First of all pivot_root() will fail if parent mount is
+	// shared. Secondly when we bind mount rootfs it will propagate to
+	// parent namespace and we don't want that to happen.
+	if sharedMount {
+		return mount("", parentMount, "", "", unix.MS_PRIVATE, "")
+	}
+
+	return nil
+}
+
+// needsSetupDev returns true if /dev needs to be set up.
+func needsSetupDev(config *configs.Config) bool {
+	for _, m := range config.Mounts {
+		if m.Device == "bind" && utils.CleanPath(m.Destination) == "/dev" {
+			return false
+		}
+	}
+	return true
+}
+func mountCmd(cmd configs.Command) error {
+	command := exec.Command(cmd.Path, cmd.Args[:]...)
+	command.Env = cmd.Env
+	command.Dir = cmd.Dir
+	if out, err := command.CombinedOutput(); err != nil {
+		return fmt.Errorf("%#v failed: %s: %w", cmd, string(out), err)
+	}
+	return nil
+}
+func mountToRootfs(m *configs.Mount, c *mountConfig) error {
+	rootfs := c.root
+
+	// procfs and sysfs are special because we need to ensure they are actually
+	// mounted on a specific path in a container without any funny business.
+	switch m.Device {
+	case "proc", "sysfs":
+		// If the destination already exists and is not a directory, we bail
+		// out. This is to avoid mounting through a symlink or similar -- which
+		// has been a "fun" attack scenario in the past.
+		// TODO: This won't be necessary once we switch to libpathrs and we can
+		//       stop all of these symlink-exchange attacks.
+		dest := filepath.Clean(m.Destination)
+		if !strings.HasPrefix(dest, rootfs) {
+			// Do not use securejoin as it resolves symlinks.
+			dest = filepath.Join(rootfs, dest)
+		}
+		if fi, err := os.Lstat(dest); err != nil {
+			if !os.IsNotExist(err) {
+				return err
+			}
+		} else if !fi.IsDir() {
+			return fmt.Errorf("filesystem %q must be mounted on ordinary directory", m.Device)
+		}
+		if err := os.MkdirAll(dest, 0o755); err != nil {
+			return err
+		}
+		// Selinux kernels do not support labeling of /proc or /sys.
+		return mountPropagate(m, rootfs, "", nil)
+	}
+
+	mountLabel := c.label
+	mountFd := c.fd
+	dest, err := securejoin.SecureJoin(rootfs, m.Destination)
+	if err != nil {
+		return err
+	}
+
+	switch m.Device {
+	case "mqueue":
+		if err := os.MkdirAll(dest, 0o755); err != nil {
+			return err
+		}
+		if err := mountPropagate(m, rootfs, "", nil); err != nil {
+			return err
+		}
+		return label.SetFileLabel(dest, mountLabel)
+	case "tmpfs":
+		if stat, err := os.Stat(dest); err != nil {
+			if err := os.MkdirAll(dest, 0o755); err != nil {
+				return err
+			}
+		} else {
+			dt := fmt.Sprintf("mode=%04o", syscallMode(stat.Mode()))
+			if m.Data != "" {
+				dt = dt + "," + m.Data
+			}
+			m.Data = dt
+		}
+
+		if m.Extensions&configs.EXT_COPYUP == configs.EXT_COPYUP {
+			err = doTmpfsCopyUp(m, rootfs, mountLabel)
+		} else {
+			err = mountPropagate(m, rootfs, mountLabel, nil)
+		}
+
+		return err
+	case "bind":
+		if err := prepareBindMount(m, rootfs, mountFd); err != nil {
+			return err
+		}
+		if err := mountPropagate(m, rootfs, mountLabel, mountFd); err != nil {
+			return err
+		}
+		// bind mount won't change mount options, we need remount to make mount options effective.
+		// first check that we have non-default options required before attempting a remount
+		if m.Flags&^(unix.MS_REC|unix.MS_REMOUNT|unix.MS_BIND) != 0 {
+			// only remount if unique mount options are set
+			if err := remount(m, rootfs, mountFd); err != nil {
+				return err
+			}
+		}
+
+		if m.Relabel != "" {
+			if err := label.Validate(m.Relabel); err != nil {
+				return err
+			}
+			shared := label.IsShared(m.Relabel)
+			if err := label.Relabel(m.Source, mountLabel, shared); err != nil {
+				return err
+			}
+		}
+	case "cgroup":
+		if cgroups.IsCgroup2UnifiedMode() {
+			return mountCgroupV2(m, c)
+		}
+		return mountCgroupV1(m, c)
+	default:
+		if err := checkProcMount(rootfs, dest, m.Source); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(dest, 0o755); err != nil {
+			return err
+		}
+		return mountPropagate(m, rootfs, mountLabel, mountFd)
+	}
+	if err := setRecAttr(m, rootfs); err != nil {
+		return err
+	}
+	return nil
+}
+
 // Do the mount operation followed by additional mounts required to take care
 // of propagation flags. This will always be scoped inside the container rootfs.
 func mountPropagate(m *configs.Mount, rootfs string, mountLabel string, mountFd *int) error {
@@ -1152,11 +1065,97 @@ func mountPropagate(m *configs.Mount, rootfs string, mountLabel string, mountFd 
 	return nil
 }
 
-func setRecAttr(m *configs.Mount, rootfs string) error {
-	if m.RecAttr == nil {
-		return nil
+// /tmp has to be mounted as private to allow MS_MOVE to work in all situations
+// /tmp必须作为私有挂载，以允许MS_MOVE在所有情况下工作
+func prepareTmp(topTmpDir string) (string, error) {
+	tmpdir, err := os.MkdirTemp(topTmpDir, "runctop")
+	if err != nil {
+		return "", err
 	}
-	return utils.WithProcfd(rootfs, m.Destination, func(procfd string) error {
-		return unix.MountSetattr(-1, procfd, unix.AT_RECURSIVE, m.RecAttr)
+	if err := mount(tmpdir, tmpdir, "", "bind", unix.MS_BIND, ""); err != nil {
+		return "", err
+	}
+	if err := mount("", tmpdir, "", "", uintptr(unix.MS_PRIVATE), ""); err != nil {
+		return "", err
+	}
+	return tmpdir, nil
+}
+
+func cleanupTmp(tmpdir string) {
+	_ = unix.Unmount(tmpdir, 0)
+	_ = os.RemoveAll(tmpdir)
+}
+
+func doTmpfsCopyUp(m *configs.Mount, rootfs, mountLabel string) (Err error) {
+	// Set up a scratch dir for the tmpfs on the host.
+	tmpdir, err := prepareTmp("/tmp")
+	if err != nil {
+		return fmt.Errorf("tmpcopyup: failed to setup tmpdir: %w", err)
+	}
+	defer cleanupTmp(tmpdir)
+	tmpDir, err := os.MkdirTemp(tmpdir, "runctmpdir")
+	if err != nil {
+		return fmt.Errorf("tmpcopyup: failed to create tmpdir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Configure the *host* tmpdir as if it's the container mount. We change
+	// m.Destination since we are going to mount *on the host*.
+	oldDest := m.Destination
+	m.Destination = tmpDir
+	err = mountPropagate(m, "/", mountLabel, nil)
+	m.Destination = oldDest
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if Err != nil {
+			if err := unmount(tmpDir, unix.MNT_DETACH); err != nil {
+				logrus.Warnf("tmpcopyup: %v", err)
+			}
+		}
+	}()
+
+	return utils.WithProcfd(rootfs, m.Destination, func(procfd string) (Err error) {
+		// Copy the container data to the host tmpdir. We append "/" to force
+		// CopyDirectory to resolve the symlink rather than trying to copy the
+		// symlink itself.
+		if err := fileutils.CopyDirectory(procfd+"/", tmpDir); err != nil {
+			return fmt.Errorf("tmpcopyup: failed to copy %s to %s (%s): %w", m.Destination, procfd, tmpDir, err)
+		}
+		// Now move the mount into the container.
+		if err := mount(tmpDir, m.Destination, procfd, "", unix.MS_MOVE, ""); err != nil {
+			return fmt.Errorf("tmpcopyup: failed to move mount: %w", err)
+		}
+		return nil
 	})
+}
+func prepareBindMount(m *configs.Mount, rootfs string, mountFd *int) error {
+	source := m.Source
+	if mountFd != nil {
+		source = "/proc/self/fd/" + strconv.Itoa(*mountFd)
+	}
+
+	stat, err := os.Stat(source)
+	if err != nil {
+		// error out if the source of a bind mount does not exist as we will be
+		// unable to bind anything to it.
+		return err
+	}
+	// ensure that the destination of the bind mount is resolved of symlinks at mount time because
+	// any previous mounts can invalidate the next mount's destination.
+	// this can happen when a user specifies mounts within other mounts to cause breakouts or other
+	// evil stuff to try to escape the container's rootfs.
+	var dest string
+	if dest, err = securejoin.SecureJoin(rootfs, m.Destination); err != nil {
+		return err
+	}
+	if err := checkProcMount(rootfs, dest, source); err != nil {
+		return err
+	}
+	if err := createIfNotExists(dest, stat.IsDir()); err != nil {
+		return err
+	}
+
+	return nil
 }

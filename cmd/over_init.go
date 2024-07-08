@@ -1,17 +1,28 @@
 package runc
 
 import (
-	"os"
-	"runtime"
-	"strconv"
-
 	"github.com/opencontainers/runc/libcontainer"
 	_ "github.com/opencontainers/runc/libcontainer/nsenter"
 	"github.com/sirupsen/logrus"
+	"os"
+	"runtime"
+	"strconv"
+	"time"
 )
 
 func init() {
 	if len(os.Args) > 1 && os.Args[1] == "init" {
+		//fmt.Println("runc init pid:", os.Getpid())
+		for {
+			_, err := os.Stat("/tmp/runc.init")
+			if err == nil {
+				// dlv --listen=:32345 --headless=true --api-version=2 attach {PID}
+				break
+			} else {
+				time.Sleep(time.Second)
+			}
+		}
+
 		// This is the golang entry point for runc init, executed
 		// before main() but after libcontainer/nsenter's nsexec().
 		runtime.GOMAXPROCS(1)

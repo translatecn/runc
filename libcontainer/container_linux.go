@@ -431,22 +431,23 @@ func (c *linuxContainer) newSetnsProcess(p *Process, cmd *exec.Cmd, messageSockP
 	}
 	// for setns process, we don't have to set cloneflags as the process namespaces
 	// will only be set via setns syscall
-	data, err := c.bootstrapData(0, state.NamespacePaths, initSetns)
+	data, dataJson, err := c.bootstrapData(0, state.NamespacePaths, initSetns)
 	if err != nil {
 		return nil, err
 	}
 	proc := &setnsProcess{
-		cmd:             cmd,
-		cgroupPaths:     state.CgroupPaths,
-		rootlessCgroups: c.config.RootlessCgroups,
-		intelRdtPath:    state.IntelRdtPath,
-		messageSockPair: messageSockPair,
-		logFilePair:     logFilePair,
-		manager:         c.cgroupManager,
-		config:          c.newInitConfig(p),
-		process:         p,
-		bootstrapData:   data,
-		initProcessPid:  state.InitProcessPid,
+		cmd:               cmd,
+		cgroupPaths:       state.CgroupPaths,
+		rootlessCgroups:   c.config.RootlessCgroups,
+		intelRdtPath:      state.IntelRdtPath,
+		messageSockPair:   messageSockPair,
+		logFilePair:       logFilePair,
+		manager:           c.cgroupManager,
+		config:            c.newInitConfig(p),
+		process:           p,
+		bootstrapData:     data,
+		bootstrapDataJson: dataJson,
+		initProcessPid:    state.InitProcessPid,
 	}
 	if len(p.SubCgroupPaths) > 0 {
 		if add, ok := p.SubCgroupPaths[""]; ok {
@@ -1035,44 +1036,6 @@ func (c *linuxContainer) restoreNetwork(req *criurpc.CriuReq, criuOpts *CriuOpts
 		veth.IfIn = proto.String(i.ContainerInterfaceName)
 		req.Opts.Veths = append(req.Opts.Veths, veth)
 	}
-}
-
-// makeCriuRestoreMountpoints makes the actual mountpoints for the
-// restore using CRIU. This function is inspired from the code in
-// rootfs_linux.go
-func (c *linuxContainer) makeCriuRestoreMountpoints(m *configs.Mount) error {
-	switch m.Device {
-	case "cgroup":
-		// No mount point(s) need to be created:
-		//
-		// * for v1, mount points are saved by CRIU because
-		//   /sys/fs/cgroup is a tmpfs mount
-		//
-		// * for v2, /sys/fs/cgroup is a real mount, but
-		//   the mountpoint appears as soon as /sys is mounted
-		return nil
-	case "bind":
-		// The prepareBindMount() function checks if source
-		// exists. So it cannot be used for other filesystem types.
-		// TODO: pass something else than nil? Not sure if criu is
-		// impacted by issue #2484
-		if err := prepareBindMount(m, c.config.Rootfs, nil); err != nil {
-			return err
-		}
-	default:
-		// for all other filesystems just create the mountpoints
-		dest, err := securejoin.SecureJoin(c.config.Rootfs, m.Destination)
-		if err != nil {
-			return err
-		}
-		if err := checkProcMount(c.config.Rootfs, dest, ""); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(dest, 0o755); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // isPathInPrefixList is a small function for CRIU restore to make sure
@@ -2034,10 +1997,11 @@ type netlinkError struct{ error }
 
 // 将必要的数据以 netlink 二进制格式编码为io.Reader。 Netlink为内核与用户空间进程之间的通信定义了一套标准的消息和处理机制
 // 消费者可以将数据写入引导程序，例如使用nsenter包正确引导容器的init进程，即使用正确的命名空间，uid/gid映射等。
-func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.NamespaceType]string, it initType) (_ io.Reader, Err error) {
+func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.NamespaceType]string, it initType) (_ io.Reader, _ io.Reader, Err error) {
 	// create the netlink message
 	r := nl.NewNetlinkRequest(int(InitMsg), 0)
 
+	jsonRes := []CommonMsg{}
 	// Our custom messages cannot bubble up an error using returns, instead
 	// they will panic with the specific error type, netlinkError. In that
 	// case, recover from the panic and return that as an error.
@@ -2056,16 +2020,24 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 		Type:  CloneFlagsAttr,
 		Value: uint32(cloneFlags),
 	})
+	jsonRes = append(jsonRes, CommonMsg{
+		Type:  "CloneFlagsAttr",
+		Value: uint32(cloneFlags),
+	})
 
 	// write custom namespace paths
 	if len(nsMaps) > 0 {
 		nsPaths, err := c.orderNamespacePaths(nsMaps)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		r.AddData(&Bytemsg{
 			Type:  NsPathsAttr,
 			Value: []byte(strings.Join(nsPaths, ",")),
+		})
+		jsonRes = append(jsonRes, CommonMsg{
+			Type:  "NsPathsAttr",
+			Value: strings.Join(nsPaths, ","),
 		})
 	}
 
@@ -2079,14 +2051,24 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 					Type:  UidmapPathAttr,
 					Value: []byte(c.newuidmapPath),
 				})
+
+				jsonRes = append(jsonRes, CommonMsg{
+					Type:  "UidmapPathAttr",
+					Value: c.newuidmapPath,
+				})
 			}
 			b, err := encodeIDMapping(c.config.UidMappings)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			r.AddData(&Bytemsg{
 				Type:  UidmapAttr,
 				Value: b,
+			})
+
+			jsonRes = append(jsonRes, CommonMsg{
+				Type:  "UidmapAttr",
+				Value: string(b),
 			})
 		}
 
@@ -2094,21 +2076,34 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 		if len(c.config.GidMappings) > 0 {
 			b, err := encodeIDMapping(c.config.GidMappings)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			r.AddData(&Bytemsg{
 				Type:  GidmapAttr,
 				Value: b,
+			})
+
+			jsonRes = append(jsonRes, CommonMsg{
+				Type:  "GidmapAttr",
+				Value: string(b),
 			})
 			if c.config.RootlessEUID && c.newgidmapPath != "" {
 				r.AddData(&Bytemsg{
 					Type:  GidmapPathAttr,
 					Value: []byte(c.newgidmapPath),
 				})
+				jsonRes = append(jsonRes, CommonMsg{
+					Type:  "GidmapPathAttr",
+					Value: c.newgidmapPath,
+				})
 			}
 			if requiresRootOrMappingTool(c.config) {
 				r.AddData(&Boolmsg{
 					Type:  SetgroupAttr,
+					Value: true,
+				})
+				jsonRes = append(jsonRes, CommonMsg{
+					Type:  "SetgroupAttr",
 					Value: true,
 				})
 			}
@@ -2121,6 +2116,10 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 			Type:  OomScoreAdjAttr,
 			Value: []byte(strconv.Itoa(*c.config.OomScoreAdj)),
 		})
+		jsonRes = append(jsonRes, CommonMsg{
+			Type:  "OomScoreAdjAttr",
+			Value: strconv.Itoa(*c.config.OomScoreAdj),
+		})
 	}
 
 	// write rootless
@@ -2128,14 +2127,17 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 		Type:  RootlessEUIDAttr,
 		Value: c.config.RootlessEUID,
 	})
-
+	jsonRes = append(jsonRes, CommonMsg{
+		Type:  "RootlessEUIDAttr",
+		Value: c.config.RootlessEUID,
+	})
 	// Bind mount source to open.
 	if it == initStandard && c.shouldSendMountSources() {
 		var mounts []byte
 		for _, m := range c.config.Mounts {
 			if m.IsBind() {
 				if strings.IndexByte(m.Source, 0) >= 0 {
-					return nil, fmt.Errorf("mount source string contains null byte: %q", m.Source)
+					return nil, nil, fmt.Errorf("mount source string contains null byte: %q", m.Source)
 				}
 				mounts = append(mounts, []byte(m.Source)...)
 			}
@@ -2146,9 +2148,14 @@ func (c *linuxContainer) bootstrapData(cloneFlags uintptr, nsMaps map[configs.Na
 			Type:  MountSourcesAttr,
 			Value: mounts,
 		})
+		jsonRes = append(jsonRes, CommonMsg{
+			Type:  "MountSourcesAttr",
+			Value: string(mounts),
+		})
 	}
+	marshal, _ := json.Marshal(jsonRes)
 
-	return bytes.NewReader(r.Serialize()), nil
+	return bytes.NewReader(r.Serialize()), bytes.NewReader(marshal), nil
 }
 
 func (c *linuxContainer) newInitConfig(process *Process) *initConfig {
@@ -2200,7 +2207,7 @@ func (c *linuxContainer) newInitProcess(p *Process, cmd *exec.Cmd, messageSockPa
 		}
 	}
 	_, sharePidns := nsMaps[configs.NEWPID]
-	data, err := c.bootstrapData(c.config.Namespaces.CloneFlags(), nsMaps, initStandard)
+	data, dataJson, err := c.bootstrapData(c.config.Namespaces.CloneFlags(), nsMaps, initStandard)
 	if err != nil {
 		return nil, err
 	}
@@ -2235,16 +2242,17 @@ func (c *linuxContainer) newInitProcess(p *Process, cmd *exec.Cmd, messageSockPa
 	}
 
 	init := &initProcess{
-		cmd:             cmd,
-		messageSockPair: messageSockPair,
-		logFilePair:     logFilePair,
-		manager:         c.cgroupManager,
-		intelRdtManager: c.intelRdtManager,
-		config:          c.newInitConfig(p),
-		container:       c,
-		process:         p,
-		bootstrapData:   data,
-		sharePidns:      sharePidns,
+		cmd:               cmd,
+		messageSockPair:   messageSockPair,
+		logFilePair:       logFilePair,
+		manager:           c.cgroupManager,
+		intelRdtManager:   c.intelRdtManager,
+		config:            c.newInitConfig(p),
+		container:         c,
+		process:           p,
+		bootstrapData:     data,
+		bootstrapDataJson: dataJson,
+		sharePidns:        sharePidns,
 	}
 	c.initProcess = init
 	return init, nil
@@ -2277,4 +2285,42 @@ func (c *linuxContainer) newParentProcess(p *Process) (parentProcess, error) {
 		return nil, fmt.Errorf("unable to setup exec fifo: %w", err)
 	}
 	return c.newInitProcess(p, cmd, messageSockPair, logFilePair)
+}
+
+// makeCriuRestoreMountpoints makes the actual mountpoints for the
+// restore using CRIU. This function is inspired from the code in
+// rootfs_linux.go
+func (c *linuxContainer) makeCriuRestoreMountpoints(m *configs.Mount) error {
+	switch m.Device {
+	case "cgroup":
+		// No mount point(s) need to be created:
+		//
+		// * for v1, mount points are saved by CRIU because
+		//   /sys/fs/cgroup is a tmpfs mount
+		//
+		// * for v2, /sys/fs/cgroup is a real mount, but
+		//   the mountpoint appears as soon as /sys is mounted
+		return nil
+	case "bind":
+		// The prepareBindMount() function checks if source
+		// exists. So it cannot be used for other filesystem types.
+		// TODO: pass something else than nil? Not sure if criu is
+		// impacted by issue #2484
+		if err := prepareBindMount(m, c.config.Rootfs, nil); err != nil {
+			return err
+		}
+	default:
+		// for all other filesystems just create the mountpoints
+		dest, err := securejoin.SecureJoin(c.config.Rootfs, m.Destination)
+		if err != nil {
+			return err
+		}
+		if err := checkProcMount(c.config.Rootfs, dest, ""); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(dest, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
 }

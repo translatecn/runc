@@ -28,6 +28,10 @@ type Int32msg struct {
 	Type  uint16
 	Value uint32
 }
+type CommonMsg struct {
+	Type  string
+	Value interface{}
+}
 
 // Serialize serializes the message.
 // Int32msg has the following representation

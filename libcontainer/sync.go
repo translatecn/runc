@@ -77,6 +77,21 @@ func readSync(pipe io.Reader, expected syncType) error {
 	return nil
 }
 
+// writeSyncWithFd is used to write to a synchronisation pipe. An error is
+// returned if there was a problem writing the payload.
+func writeSyncWithFd(pipe io.Writer, sync syncType, fd int) error {
+	if err := utils.WriteJSON(pipe, syncT{sync, fd}); err != nil {
+		return fmt.Errorf("writing syncT %q: %w", string(sync), err)
+	}
+	return nil
+}
+
+// writeSync is used to write to a synchronisation pipe. An error is returned
+// if there was a problem writing the payload.
+func writeSync(pipe io.Writer, sync syncType) error {
+	return writeSyncWithFd(pipe, sync, -1)
+}
+
 // parseSync runs the given callback function on each syncT received from the
 // child. It will return once io.EOF is returned from the given pipe.
 func parseSync(pipe io.Reader, fn func(*syncT) error) error {
@@ -108,19 +123,4 @@ func parseSync(pipe io.Reader, fn func(*syncT) error) error {
 		}
 	}
 	return nil
-}
-
-// writeSyncWithFd is used to write to a synchronisation pipe. An error is
-// returned if there was a problem writing the payload.
-func writeSyncWithFd(pipe io.Writer, sync syncType, fd int) error {
-	if err := utils.WriteJSON(pipe, syncT{sync, fd}); err != nil {
-		return fmt.Errorf("writing syncT %q: %w", string(sync), err)
-	}
-	return nil
-}
-
-// writeSync is used to write to a synchronisation pipe. An error is returned
-// if there was a problem writing the payload.
-func writeSync(pipe io.Writer, sync syncType) error {
-	return writeSyncWithFd(pipe, sync, -1)
 }

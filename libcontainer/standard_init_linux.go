@@ -30,22 +30,6 @@ type linuxStandardInit struct {
 	config        *initConfig
 }
 
-func (l *linuxStandardInit) getSessionRingParams() (string, uint32, uint32) {
-	var newperms uint32
-
-	if l.config.Config.Namespaces.Contains(configs.NEWUSER) {
-		// With user ns we need 'other' search permissions.
-		newperms = 0x8
-	} else {
-		// Without user ns we need 'UID' search permissions.
-		newperms = 0x80000
-	}
-
-	// Create a unique per session container name that we can join in setns;
-	// However, other containers can also join it.
-	return "_ses." + l.config.ContainerId, 0xffffffff, newperms
-}
-
 func (l *linuxStandardInit) Init() error {
 	if !l.config.Config.NoNewKeyring {
 		if err := selinux.SetKeyLabel(l.config.ProcessLabel); err != nil {
@@ -77,7 +61,7 @@ func (l *linuxStandardInit) Init() error {
 		}
 	}
 
-	if err := setupNetwork(l.config); err != nil {
+	if err := setupNetwork(l.config); err != nil { // loopback ethup
 		return err
 	}
 	if err := setupRoute(l.config.Config); err != nil {
@@ -88,6 +72,7 @@ func (l *linuxStandardInit) Init() error {
 	selinux.GetEnabled()
 
 	// We don't need the mountFds after prepareRootfs() nor if it fails.
+	//我们不需要在prepareerootfs()之后进行挂载，也不需要在它失败时进行挂载。
 	err := prepareRootfs(l.pipe, l.config, l.mountFds)
 	for _, m := range l.mountFds {
 		if m == -1 {
@@ -102,6 +87,7 @@ func (l *linuxStandardInit) Init() error {
 	if err != nil {
 		return err
 	}
+	//💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯💯
 
 	// Set up the console. This has to be done *before* we finalize the rootfs,
 	// but *after* we've given the user the chance to set up all of the mounts
@@ -278,4 +264,19 @@ func (l *linuxStandardInit) Init() error {
 		return err
 	}
 	return system.Exec(name, l.config.Args[0:], os.Environ())
+}
+func (l *linuxStandardInit) getSessionRingParams() (string, uint32, uint32) {
+	var newperms uint32
+
+	if l.config.Config.Namespaces.Contains(configs.NEWUSER) {
+		// With user ns we need 'other' search permissions.
+		newperms = 0x8
+	} else {
+		// Without user ns we need 'UID' search permissions.
+		newperms = 0x80000
+	}
+
+	// Create a unique per session container name that we can join in setns;
+	// However, other containers can also join it.
+	return "_ses." + l.config.ContainerId, 0xffffffff, newperms
 }

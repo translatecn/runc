@@ -168,51 +168,6 @@ func (l *LinuxFactory) loadState(root string) (*State, error) {
 	return state, nil
 }
 
-// NewuidmapPath returns an option func to configure a LinuxFactory with the
-// provided ..
-func NewuidmapPath(newuidmapPath string) func(*LinuxFactory) error {
-	return func(l *LinuxFactory) error {
-		l.NewuidmapPath = newuidmapPath
-		return nil
-	}
-}
-
-// NewgidmapPath returns an option func to configure a LinuxFactory with the
-// provided ..
-func NewgidmapPath(newgidmapPath string) func(*LinuxFactory) error {
-	return func(l *LinuxFactory) error {
-		l.NewgidmapPath = newgidmapPath
-		return nil
-	}
-}
-
-// New returns a linux based container factory based in the root directory and
-// configures the factory with the provided option funcs.
-func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
-	if root != "" {
-		if err := os.MkdirAll(root, 0o700); err != nil { // /run/containerd/runc/k8s.io
-			return nil, err
-		}
-	}
-	l := &LinuxFactory{
-		Root:      root,
-		InitPath:  "/proc/self/exe", // /usr/bin/runc
-		InitArgs:  []string{os.Args[0], "init"},
-		Validator: validate.New(),
-		// https://blog.csdn.net/qq_43375973/article/details/117387384
-		CriuPath: "criu", // 保存进程状态、恢复
-	}
-
-	for _, opt := range options {
-		if opt == nil {
-			continue
-		}
-		if err := opt(l); err != nil {
-			return nil, err
-		}
-	}
-	return l, nil
-}
 func (l *LinuxFactory) validateID(id string) error {
 	if !idRegex.MatchString(id) || string(os.PathSeparator)+id != utils.CleanPath(string(os.PathSeparator)+id) {
 		return ErrInvalidID
@@ -400,4 +355,50 @@ func parseMountFds() ([]int, error) {
 	}
 
 	return mountFds, nil
+}
+
+// NewuidmapPath returns an option func to configure a LinuxFactory with the
+// provided ..
+func NewuidmapPath(newuidmapPath string) func(*LinuxFactory) error {
+	return func(l *LinuxFactory) error {
+		l.NewuidmapPath = newuidmapPath
+		return nil
+	}
+}
+
+// NewgidmapPath returns an option func to configure a LinuxFactory with the
+// provided ..
+func NewgidmapPath(newgidmapPath string) func(*LinuxFactory) error {
+	return func(l *LinuxFactory) error {
+		l.NewgidmapPath = newgidmapPath
+		return nil
+	}
+}
+
+// New returns a linux based container factory based in the root directory and
+// configures the factory with the provided option funcs.
+func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
+	if root != "" {
+		if err := os.MkdirAll(root, 0o700); err != nil { // /run/containerd/runc/k8s.io
+			return nil, err
+		}
+	}
+	l := &LinuxFactory{
+		Root:      root,
+		InitPath:  "/proc/self/exe", // /usr/bin/runc
+		InitArgs:  []string{os.Args[0], "init"},
+		Validator: validate.New(),
+		// https://blog.csdn.net/qq_43375973/article/details/117387384
+		CriuPath: "criu", // 保存进程状态、恢复
+	}
+
+	for _, opt := range options {
+		if opt == nil {
+			continue
+		}
+		if err := opt(l); err != nil {
+			return nil, err
+		}
+	}
+	return l, nil
 }

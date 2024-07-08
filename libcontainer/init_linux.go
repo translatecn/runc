@@ -53,7 +53,7 @@ type initConfig struct {
 	Env              []string              `json:"env"`
 	Cwd              string                `json:"cwd"`
 	Capabilities     *configs.Capabilities `json:"capabilities"`
-	ProcessLabel     string                `json:"process_label"`
+	ProcessLabel     string                `json:"process_label"` // setlinux
 	AppArmorProfile  string                `json:"apparmor_profile"`
 	NoNewPrivileges  bool                  `json:"no_new_privileges"`
 	User             string                `json:"user"`
@@ -412,52 +412,6 @@ func fixStdioPermissions(u *user.ExecUser) error {
 	return nil
 }
 
-// setupNetwork sets up and initializes any network interface inside the container.
-func setupNetwork(config *initConfig) error {
-	for _, config := range config.Networks {
-		strategy, err := getStrategy(config.Type)
-		if err != nil {
-			return err
-		}
-		if err := strategy.initialize(config); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func setupRoute(config *configs.Config) error {
-	for _, config := range config.Routes {
-		_, dst, err := net.ParseCIDR(config.Destination)
-		if err != nil {
-			return err
-		}
-		src := net.ParseIP(config.Source)
-		if src == nil {
-			return fmt.Errorf("Invalid source for route: %s", config.Source)
-		}
-		gw := net.ParseIP(config.Gateway)
-		if gw == nil {
-			return fmt.Errorf("Invalid gateway for route: %s", config.Gateway)
-		}
-		l, err := netlink.LinkByName(config.InterfaceName)
-		if err != nil {
-			return err
-		}
-		route := &netlink.Route{
-			Scope:     netlink.SCOPE_UNIVERSE,
-			Dst:       dst,
-			Src:       src,
-			Gw:        gw,
-			LinkIndex: l.Attrs().Index,
-		}
-		if err := netlink.RouteAdd(route); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func setupRlimits(limits []configs.Rlimit, pid int) error {
 	for _, rlimit := range limits {
 		if err := unix.Prlimit(pid, rlimit.Type, &unix.Rlimit{Max: rlimit.Hard, Cur: rlimit.Soft}, nil); err != nil {
@@ -565,28 +519,6 @@ func signalAllProcesses(m cgroups.Manager, s os.Signal) error {
 
 // populateProcessEnvironment loads the provided environment variables into the
 // current processes's environment.
-func populateProcessEnvironment(env []string) error {
-	for _, pair := range env {
-		p := strings.SplitN(pair, "=", 2)
-		if len(p) < 2 {
-			return errors.New("invalid environment variable: missing '='")
-		}
-		name, val := p[0], p[1]
-		if name == "" {
-			return errors.New("invalid environment variable: name cannot be empty")
-		}
-		if strings.IndexByte(name, 0) >= 0 {
-			return fmt.Errorf("invalid environment variable %q: name contains nul byte (\\x00)", name)
-		}
-		if strings.IndexByte(val, 0) >= 0 {
-			return fmt.Errorf("invalid environment variable %q: value contains nul byte (\\x00)", name)
-		}
-		if err := os.Setenv(name, val); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, fifoFd, logFd int, mountFds []int) (initer, error) {
 	var config *initConfig
@@ -594,7 +526,7 @@ func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, fifoFd,
 	if err := json.NewDecoder(pipe).Decode(&config); err != nil {
 		return nil, err
 	}
-	if err := populateProcessEnvironment(config.Env); err != nil {
+	if err := populateProcessEnvironment(config.Env); err != nil { // PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 		return nil, err
 	}
 	switch t {
@@ -622,4 +554,75 @@ func newContainerInit(t initType, pipe *os.File, consoleSocket *os.File, fifoFd,
 		}, nil
 	}
 	return nil, fmt.Errorf("unknown init type %q", t)
+}
+
+// populateProcessEnvironment loads the provided environment variables into the
+// current processes's environment.
+func populateProcessEnvironment(env []string) error {
+	for _, pair := range env {
+		p := strings.SplitN(pair, "=", 2)
+		if len(p) < 2 {
+			return errors.New("invalid environment variable: missing '='")
+		}
+		name, val := p[0], p[1]
+		if name == "" {
+			return errors.New("invalid environment variable: name cannot be empty")
+		}
+		if strings.IndexByte(name, 0) >= 0 {
+			return fmt.Errorf("invalid environment variable %q: name contains nul byte (\\x00)", name)
+		}
+		if strings.IndexByte(val, 0) >= 0 {
+			return fmt.Errorf("invalid environment variable %q: value contains nul byte (\\x00)", name)
+		}
+		if err := os.Setenv(name, val); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setupNetwork sets up and initializes any network interface inside the container.
+func setupNetwork(config *initConfig) error {
+	for _, config := range config.Networks {
+		strategy, err := getStrategy(config.Type)
+		if err != nil {
+			return err
+		}
+		if err := strategy.initialize(config); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func setupRoute(config *configs.Config) error {
+	for _, config := range config.Routes {
+		_, dst, err := net.ParseCIDR(config.Destination)
+		if err != nil {
+			return err
+		}
+		src := net.ParseIP(config.Source)
+		if src == nil {
+			return fmt.Errorf("Invalid source for route: %s", config.Source)
+		}
+		gw := net.ParseIP(config.Gateway)
+		if gw == nil {
+			return fmt.Errorf("Invalid gateway for route: %s", config.Gateway)
+		}
+		l, err := netlink.LinkByName(config.InterfaceName)
+		if err != nil {
+			return err
+		}
+		route := &netlink.Route{
+			Scope:     netlink.SCOPE_UNIVERSE,
+			Dst:       dst,
+			Src:       src,
+			Gw:        gw,
+			LinkIndex: l.Attrs().Index,
+		}
+		if err := netlink.RouteAdd(route); err != nil {
+			return err
+		}
+	}
+	return nil
 }

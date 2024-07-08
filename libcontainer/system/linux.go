@@ -81,6 +81,7 @@ func ClearKeepCaps() error {
 }
 
 func Setctty() error {
+	//这时可以设置新的控制终端了，设置控制终端为stdin
 	if err := unix.IoctlSetInt(0, unix.TIOCSCTTY, 0); err != nil {
 		return err
 	}

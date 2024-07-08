@@ -37,4 +37,51 @@ prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) 使进程不可转储
 prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) 使进程可转储
 
 
- 
+```
+
+- NEWNET    = "NEWNET"
+- NEWPID    = "NEWPID"
+- NEWNS     = "NEWNS"
+- NEWUTS    = "NEWUTS"
+- NEWIPC    = "NEWIPC"
+- NEWUSER   = "NEWUSER"
+- NEWCGROUP = "NEWCGROUP"
+
+$ unahre --user -r --uts /bin/bash
+
+[root@vm ~]# unshare -h
+
+用法：
+unshare [选项] [<程序> [<参数>...]]
+
+以某些未与父(进程)共享的名字空间运行某个程序。
+
+选项：
+-m, --mount[=<文件>]      取消共享 mounts 名字空间
+-u, --uts[=<文件>]        取消共享 UTS 名字空间(主机名等)
+-i, --ipc[=<文件>]        取消共享 System V IPC 名字空间
+-n, --net[=<file>]        取消共享网络名字空间
+-p, --pid[=<文件>]        取消共享 pid 名字空间
+-U, --user[=<文件>]       取消共享用户名字空间
+-C, --cgroup[=<文件>]     取消共享 cgroup 名字空间
+-f, --fork                在启动<程序>前 fork
+--kill-child[=<signame>]  when dying, kill the forked child (implies --fork); defaults to SIGKILL
+--mount-proc[=<目录>] 先挂载 proc 文件系统(连带打开 --mount)
+-r, --map-root-user       将当前用户映射为 root (连带打开 --user)
+--propagation slave|shared|private|unchanged
+修改 mount 名字空间中的 mount 传播
+-s, --setgroups allow|deny  控制用户名字空间中的 setgroups 系统调用
+
+-h, --help                display this help
+-V, --version             display version
+```
+
+```
+cat /proc/$$/status |egrep 'Cap(Inh|Prm|Eff)'
+```
+
+
+
+
+
+
