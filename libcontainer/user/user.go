@@ -56,46 +56,6 @@ type IDMap struct {
 	Count    int64
 }
 
-func parseLine(line []byte, v ...interface{}) {
-	parseParts(bytes.Split(line, []byte(":")), v...)
-}
-
-func parseParts(parts [][]byte, v ...interface{}) {
-	if len(parts) == 0 {
-		return
-	}
-
-	for i, p := range parts {
-		// Ignore cases where we don't have enough fields to populate the arguments.
-		// Some configuration files like to misbehave.
-		if len(v) <= i {
-			break
-		}
-
-		// Use the type of the argument to figure out how to parse it, scanf() style.
-		// This is legit.
-		switch e := v[i].(type) {
-		case *string:
-			*e = string(p)
-		case *int:
-			// "numbers", with conversion errors ignored because of some misbehaving configuration files.
-			*e, _ = strconv.Atoi(string(p))
-		case *int64:
-			*e, _ = strconv.ParseInt(string(p), 10, 64)
-		case *[]string:
-			// Comma-separated lists.
-			if len(p) != 0 {
-				*e = strings.Split(string(p), ",")
-			} else {
-				*e = []string{}
-			}
-		default:
-			// Someone goof'd when writing code using this function. Scream so they can hear us.
-			panic(fmt.Sprintf("parseLine only accepts {*string, *int, *int64, *[]string} as arguments! %#v is not a pointer!", e))
-		}
-	}
-}
-
 func ParsePasswdFile(path string) ([]User, error) {
 	passwd, err := os.Open(path)
 	if err != nil {
@@ -251,6 +211,112 @@ type ExecUser struct {
 	Home  string
 }
 
+func ParseSubIDFile(path string) ([]SubID, error) {
+	subid, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer subid.Close()
+	return ParseSubID(subid)
+}
+
+func ParseSubID(subid io.Reader) ([]SubID, error) {
+	return ParseSubIDFilter(subid, nil)
+}
+
+func ParseSubIDFileFilter(path string, filter func(SubID) bool) ([]SubID, error) {
+	subid, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer subid.Close()
+	return ParseSubIDFilter(subid, filter)
+}
+
+func ParseSubIDFilter(r io.Reader, filter func(SubID) bool) ([]SubID, error) {
+	if r == nil {
+		return nil, errors.New("nil source for subid-formatted data")
+	}
+
+	var (
+		s   = bufio.NewScanner(r)
+		out = []SubID{}
+	)
+
+	for s.Scan() {
+		line := bytes.TrimSpace(s.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+
+		// see: man 5 subuid
+		p := SubID{}
+		parseLine(line, &p.Name, &p.SubID, &p.Count)
+
+		if filter == nil || filter(p) {
+			out = append(out, p)
+		}
+	}
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
+func ParseIDMapFile(path string) ([]IDMap, error) {
+	r, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return ParseIDMap(r)
+}
+
+func ParseIDMap(r io.Reader) ([]IDMap, error) {
+	return ParseIDMapFilter(r, nil)
+}
+
+func ParseIDMapFileFilter(path string, filter func(IDMap) bool) ([]IDMap, error) {
+	r, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return ParseIDMapFilter(r, filter)
+}
+
+func ParseIDMapFilter(r io.Reader, filter func(IDMap) bool) ([]IDMap, error) {
+	if r == nil {
+		return nil, errors.New("nil source for idmap-formatted data")
+	}
+
+	var (
+		s   = bufio.NewScanner(r)
+		out = []IDMap{}
+	)
+
+	for s.Scan() {
+		line := bytes.TrimSpace(s.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+
+		// see: man 7 user_namespaces
+		p := IDMap{}
+		parseParts(bytes.Fields(line), &p.ID, &p.ParentID, &p.Count)
+
+		if filter == nil || filter(p) {
+			out = append(out, p)
+		}
+	}
+	if err := s.Err(); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
 // GetExecUserPath is a wrapper for GetExecUser. It reads data from each of the
 // given file paths and uses that data as the arguments to GetExecUser. If the
 // files cannot be opened for any reason, the error is ignored and a nil
@@ -269,6 +335,46 @@ func GetExecUserPath(userSpec string, defaults *ExecUser, passwdPath, groupPath 
 	}
 
 	return GetExecUser(userSpec, defaults, passwd, group)
+}
+
+func parseLine(line []byte, v ...interface{}) {
+	parseParts(bytes.Split(line, []byte(":")), v...)
+}
+
+func parseParts(parts [][]byte, v ...interface{}) {
+	if len(parts) == 0 {
+		return
+	}
+
+	for i, p := range parts {
+		// Ignore cases where we don't have enough fields to populate the arguments.
+		// Some configuration files like to misbehave.
+		if len(v) <= i {
+			break
+		}
+
+		// Use the type of the argument to figure out how to parse it, scanf() style.
+		// This is legit.
+		switch e := v[i].(type) {
+		case *string:
+			*e = string(p)
+		case *int:
+			// "numbers", with conversion errors ignored because of some misbehaving configuration files.
+			*e, _ = strconv.Atoi(string(p))
+		case *int64:
+			*e, _ = strconv.ParseInt(string(p), 10, 64)
+		case *[]string:
+			// Comma-separated lists.
+			if len(p) != 0 {
+				*e = strings.Split(string(p), ",")
+			} else {
+				*e = []string{}
+			}
+		default:
+			// Someone goof'd when writing code using this function. Scream so they can hear us.
+			panic(fmt.Sprintf("parseLine only accepts {*string, *int, *int64, *[]string} as arguments! %#v is not a pointer!", e))
+		}
+	}
 }
 
 // GetExecUser parses a user specification string (using the passwd and group
@@ -427,6 +533,19 @@ func GetExecUser(userSpec string, defaults *ExecUser, passwd, group io.Reader) (
 	return user, nil
 }
 
+// GetAdditionalGroupsPath is a wrapper around GetAdditionalGroups
+// that opens the groupPath given and gives it as an argument to
+// GetAdditionalGroups.
+func GetAdditionalGroupsPath(additionalGroups []string, groupPath string) ([]int, error) {
+	var group io.Reader
+
+	if groupFile, err := os.Open(groupPath); err == nil {
+		group = groupFile
+		defer groupFile.Close()
+	}
+	return GetAdditionalGroups(additionalGroups, group)
+}
+
 // GetAdditionalGroups looks up a list of groups by name or group id
 // against the given /etc/group formatted data. If a group name cannot
 // be found, an error will be returned. If a group id cannot be found,
@@ -483,123 +602,4 @@ func GetAdditionalGroups(additionalGroups []string, group io.Reader) ([]int, err
 		gids = append(gids, gid)
 	}
 	return gids, nil
-}
-
-// GetAdditionalGroupsPath is a wrapper around GetAdditionalGroups
-// that opens the groupPath given and gives it as an argument to
-// GetAdditionalGroups.
-func GetAdditionalGroupsPath(additionalGroups []string, groupPath string) ([]int, error) {
-	var group io.Reader
-
-	if groupFile, err := os.Open(groupPath); err == nil {
-		group = groupFile
-		defer groupFile.Close()
-	}
-	return GetAdditionalGroups(additionalGroups, group)
-}
-
-func ParseSubIDFile(path string) ([]SubID, error) {
-	subid, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer subid.Close()
-	return ParseSubID(subid)
-}
-
-func ParseSubID(subid io.Reader) ([]SubID, error) {
-	return ParseSubIDFilter(subid, nil)
-}
-
-func ParseSubIDFileFilter(path string, filter func(SubID) bool) ([]SubID, error) {
-	subid, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer subid.Close()
-	return ParseSubIDFilter(subid, filter)
-}
-
-func ParseSubIDFilter(r io.Reader, filter func(SubID) bool) ([]SubID, error) {
-	if r == nil {
-		return nil, errors.New("nil source for subid-formatted data")
-	}
-
-	var (
-		s   = bufio.NewScanner(r)
-		out = []SubID{}
-	)
-
-	for s.Scan() {
-		line := bytes.TrimSpace(s.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-
-		// see: man 5 subuid
-		p := SubID{}
-		parseLine(line, &p.Name, &p.SubID, &p.Count)
-
-		if filter == nil || filter(p) {
-			out = append(out, p)
-		}
-	}
-	if err := s.Err(); err != nil {
-		return nil, err
-	}
-
-	return out, nil
-}
-
-func ParseIDMapFile(path string) ([]IDMap, error) {
-	r, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-	return ParseIDMap(r)
-}
-
-func ParseIDMap(r io.Reader) ([]IDMap, error) {
-	return ParseIDMapFilter(r, nil)
-}
-
-func ParseIDMapFileFilter(path string, filter func(IDMap) bool) ([]IDMap, error) {
-	r, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-	return ParseIDMapFilter(r, filter)
-}
-
-func ParseIDMapFilter(r io.Reader, filter func(IDMap) bool) ([]IDMap, error) {
-	if r == nil {
-		return nil, errors.New("nil source for idmap-formatted data")
-	}
-
-	var (
-		s   = bufio.NewScanner(r)
-		out = []IDMap{}
-	)
-
-	for s.Scan() {
-		line := bytes.TrimSpace(s.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-
-		// see: man 7 user_namespaces
-		p := IDMap{}
-		parseParts(bytes.Fields(line), &p.ID, &p.ParentID, &p.Count)
-
-		if filter == nil || filter(p) {
-			out = append(out, p)
-		}
-	}
-	if err := s.Err(); err != nil {
-		return nil, err
-	}
-
-	return out, nil
 }

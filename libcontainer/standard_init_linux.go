@@ -132,7 +132,7 @@ func (l *linuxStandardInit) Init() error {
 			return fmt.Errorf("can't mask path %s: %w", path, err)
 		}
 	}
-	pdeath, err := system.GetParentDeathSignal()
+	pdeath, err := system.GetParentDeathSignal() // 获取父进程终止时发送给当前进程的信号
 	if err != nil {
 		return fmt.Errorf("can't get pdeath signal: %w", err)
 	}
@@ -144,6 +144,7 @@ func (l *linuxStandardInit) Init() error {
 	// Tell our parent that we're ready to Execv. This must be done before the
 	// Seccomp rules have been applied, because we need to be able to read and
 	// write to a socket.
+	// 在应用 Seccomp 规则之前，通知我们的父进程我们已经准备好执行 Execv。这是因为我们需要能够读取和写入套接字。
 	if err := syncParentReady(l.pipe); err != nil {
 		return fmt.Errorf("sync ready: %w", err)
 	}
@@ -167,8 +168,10 @@ func (l *linuxStandardInit) Init() error {
 	if err := finalizeNamespace(l.config); err != nil {
 		return err
 	}
-	// finalizeNamespace can change user/group which clears the parent death
-	// signal, so we restore it here.
+	// finalizeNamespace can change user/group which clears the parent death signal, so we restore it here.
+	//finalizeNamespace 函数可能会更改用户或组的身份，这个操作会清除父进程的死亡信号（death signal），所以需要在此处恢复它。
+	//通常，在 Unix 和类 Unix 系统中，子进程结束时，会发送一个信号给其父进程，这就是所谓的“死亡信号”（通常是 SIGCHLD）。
+	//父进程可以决定如何处理这个信号，比如忽略、捕获或者默认处理（如自动清理子进程资源）。
 	if err := pdeath.Restore(); err != nil {
 		return fmt.Errorf("can't restore pdeath signal: %w", err)
 	}
@@ -245,26 +248,13 @@ func (l *linuxStandardInit) Init() error {
 		return err
 	}
 
-	// Close all file descriptors we are not passing to the container. This is
-	// necessary because the execve target could use internal runc fds as the
-	// execve path, potentially giving access to binary files from the host
-	// (which can then be opened by container processes, leading to container
-	// escapes). Note that because this operation will close any open file
-	// descriptors that are referenced by (*os.File) handles from underneath
-	// the Go runtime, we must not do any file operations after this point
-	// (otherwise the (*os.File) finaliser could close the wrong file). See
-	// CVE-2024-21626 for more information as to why this protection is
-	// necessary.
-	//
-	// This is not needed for runc-dmz, because the extra execve(2) step means
-	// that all O_CLOEXEC file descriptors have already been closed and thus
-	// the second execve(2) from runc-dmz cannot access internal file
-	// descriptors from runc.
+	// 闭所有不需要传递给容器的文件描述符
 	if err := utils.UnsafeCloseFrom(l.config.PassedFilesCount + 3); err != nil {
 		return err
 	}
-	return system.Exec(name, l.config.Args[0:], os.Environ())
+	return system.Exec(name, l.config.Args[0:], os.Environ()) // pause
 }
+
 func (l *linuxStandardInit) getSessionRingParams() (string, uint32, uint32) {
 	var newperms uint32
 

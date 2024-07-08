@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/containerd/console"
+	"github.com/opencontainers/runc/libcontainer/capabilities"
 	"io"
 	"net"
 	"os"
@@ -12,13 +14,11 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/containerd/console"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 
-	"github.com/opencontainers/runc/libcontainer/capabilities"
 	"github.com/opencontainers/runc/libcontainer/cgroups"
 	"github.com/opencontainers/runc/libcontainer/configs"
 	"github.com/opencontainers/runc/libcontainer/system"
@@ -102,272 +102,6 @@ func verifyCwd() error {
 	return nil
 }
 
-// finalizeNamespace drops the caps, sets the correct user
-// and working dir, and closes any leaked file descriptors
-// before executing the command inside the namespace
-func finalizeNamespace(config *initConfig) error {
-	// Ensure that all unwanted fds we may have accidentally
-	// inherited are marked close-on-exec so they stay out of the
-	// container
-	if err := utils.CloseExecFrom(config.PassedFilesCount + 3); err != nil {
-		return fmt.Errorf("error closing exec fds: %w", err)
-	}
-
-	// we only do chdir if it's specified
-	doChdir := config.Cwd != ""
-	if doChdir {
-		// First, attempt the chdir before setting up the user.
-		// This could allow us to access a directory that the user running runc can access
-		// but the container user cannot.
-		err := unix.Chdir(config.Cwd)
-		switch {
-		case err == nil:
-			doChdir = false
-		case os.IsPermission(err):
-			// If we hit an EPERM, we should attempt again after setting up user.
-			// This will allow us to successfully chdir if the container user has access
-			// to the directory, but the user running runc does not.
-			// This is useful in cases where the cwd is also a volume that's been chowned to the container user.
-		default:
-			return fmt.Errorf("chdir to cwd (%q) set in config.json failed: %w", config.Cwd, err)
-		}
-	}
-
-	caps := &configs.Capabilities{}
-	if config.Capabilities != nil {
-		caps = config.Capabilities
-	} else if config.Config.Capabilities != nil {
-		caps = config.Config.Capabilities
-	}
-	w, err := capabilities.New(caps)
-	if err != nil {
-		return err
-	}
-	// drop capabilities in bounding set before changing user
-	if err := w.ApplyBoundingSet(); err != nil {
-		return fmt.Errorf("unable to apply bounding set: %w", err)
-	}
-	// preserve existing capabilities while we change users
-	if err := system.SetKeepCaps(); err != nil {
-		return fmt.Errorf("unable to set keep caps: %w", err)
-	}
-	if err := setupUser(config); err != nil {
-		return fmt.Errorf("unable to setup user: %w", err)
-	}
-	// Change working directory AFTER the user has been set up, if we haven't done it yet.
-	if doChdir {
-		if err := unix.Chdir(config.Cwd); err != nil {
-			return fmt.Errorf("chdir to cwd (%q) set in config.json failed: %w", config.Cwd, err)
-		}
-	}
-	// Make sure our final working directory is inside the container.
-	if err := verifyCwd(); err != nil {
-		return err
-	}
-	if err := system.ClearKeepCaps(); err != nil {
-		return fmt.Errorf("unable to clear keep caps: %w", err)
-	}
-	if err := w.ApplyCaps(); err != nil {
-		return fmt.Errorf("unable to apply caps: %w", err)
-	}
-	return nil
-}
-
-// setupConsole sets up the console from inside the container, and sends the
-// master pty fd to the config.Pipe (using cmsg). This is done to ensure that
-// consoles are scoped to a container properly (see runc#814 and the many
-// issues related to that). This has to be run *after* we've pivoted to the new
-// rootfs (and the users' configuration is entirely set up).
-func setupConsole(socket *os.File, config *initConfig, mount bool) error {
-	defer socket.Close()
-	// At this point, /dev/ptmx points to something that we would expect. We
-	// used to change the owner of the slave path, but since the /dev/pts mount
-	// can have gid=X set (at the users' option). So touching the owner of the
-	// slave PTY is not necessary, as the kernel will handle that for us. Note
-	// however, that setupUser (specifically fixStdioPermissions) *will* change
-	// the UID owner of the console to be the user the process will run as (so
-	// they can actually control their console).
-
-	pty, slavePath, err := console.NewPty()
-	if err != nil {
-		return err
-	}
-
-	// After we return from here, we don't need the console anymore.
-	defer pty.Close()
-
-	if config.ConsoleHeight != 0 && config.ConsoleWidth != 0 {
-		err = pty.Resize(console.WinSize{
-			Height: config.ConsoleHeight,
-			Width:  config.ConsoleWidth,
-		})
-
-		if err != nil {
-			return err
-		}
-	}
-
-	// Mount the console inside our rootfs.
-	if mount {
-		if err := mountConsole(slavePath); err != nil {
-			return err
-		}
-	}
-	// While we can access console.master, using the API is a good idea.
-	if err := utils.SendFd(socket, pty.Name(), pty.Fd()); err != nil {
-		return err
-	}
-	// Now, dup over all the things.
-	return dupStdio(slavePath)
-}
-
-// syncParentReady sends to the given pipe a JSON payload which indicates that
-// the init is ready to Exec the child process. It then waits for the parent to
-// indicate that it is cleared to Exec.
-func syncParentReady(pipe io.ReadWriter) error {
-	// Tell parent.
-	if err := writeSync(pipe, procReady); err != nil {
-		return err
-	}
-
-	// Wait for parent to give the all-clear.
-	return readSync(pipe, procRun)
-}
-
-// syncParentHooks sends to the given pipe a JSON payload which indicates that
-// the parent should execute pre-start hooks. It then waits for the parent to
-// indicate that it is cleared to resume.
-func syncParentHooks(pipe io.ReadWriter) error {
-	// Tell parent.
-	if err := writeSync(pipe, procHooks); err != nil {
-		return err
-	}
-
-	// Wait for parent to give the all-clear.
-	return readSync(pipe, procResume)
-}
-
-// syncParentSeccomp sends to the given pipe a JSON payload which
-// indicates that the parent should pick up the seccomp fd with pidfd_getfd()
-// and send it to the seccomp agent over a unix socket. It then waits for
-// the parent to indicate that it is cleared to resume and closes the seccompFd.
-// If the seccompFd is -1, there isn't anything to sync with the parent, so it
-// returns no error.
-func syncParentSeccomp(pipe io.ReadWriter, seccompFd int) error {
-	if seccompFd == -1 {
-		return nil
-	}
-
-	// Tell parent.
-	if err := writeSyncWithFd(pipe, procSeccomp, seccompFd); err != nil {
-		unix.Close(seccompFd)
-		return err
-	}
-
-	// Wait for parent to give the all-clear.
-	if err := readSync(pipe, procSeccompDone); err != nil {
-		unix.Close(seccompFd)
-		return fmt.Errorf("sync parent seccomp: %w", err)
-	}
-
-	if err := unix.Close(seccompFd); err != nil {
-		return fmt.Errorf("close seccomp fd: %w", err)
-	}
-
-	return nil
-}
-
-// setupUser changes the groups, gid, and uid for the user inside the container
-func setupUser(config *initConfig) error {
-	// Set up defaults.
-	defaultExecUser := user.ExecUser{
-		Uid:  0,
-		Gid:  0,
-		Home: "/",
-	}
-
-	passwdPath, err := user.GetPasswdPath()
-	if err != nil {
-		return err
-	}
-
-	groupPath, err := user.GetGroupPath()
-	if err != nil {
-		return err
-	}
-
-	execUser, err := user.GetExecUserPath(config.User, &defaultExecUser, passwdPath, groupPath)
-	if err != nil {
-		return err
-	}
-
-	var addGroups []int
-	if len(config.AdditionalGroups) > 0 {
-		addGroups, err = user.GetAdditionalGroupsPath(config.AdditionalGroups, groupPath)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Rather than just erroring out later in setuid(2) and setgid(2), check
-	// that the user is mapped here.
-	if _, err := config.Config.HostUID(execUser.Uid); err != nil {
-		return errors.New("cannot set uid to unmapped user in user namespace")
-	}
-	if _, err := config.Config.HostGID(execUser.Gid); err != nil {
-		return errors.New("cannot set gid to unmapped user in user namespace")
-	}
-
-	if config.RootlessEUID {
-		// We cannot set any additional groups in a rootless container and thus
-		// we bail if the user asked us to do so. TODO: We currently can't do
-		// this check earlier, but if libcontainer.Process.User was typesafe
-		// this might work.
-		if len(addGroups) > 0 {
-			return errors.New("cannot set any additional groups in a rootless container")
-		}
-	}
-
-	// Before we change to the container's user make sure that the processes
-	// STDIO is correctly owned by the user that we are switching to.
-	if err := fixStdioPermissions(execUser); err != nil {
-		return err
-	}
-
-	setgroups, err := os.ReadFile("/proc/self/setgroups")
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-
-	// This isn't allowed in an unprivileged user namespace since Linux 3.19.
-	// There's nothing we can do about /etc/group entries, so we silently
-	// ignore setting groups here (since the user didn't explicitly ask us to
-	// set the group).
-	allowSupGroups := !config.RootlessEUID && string(bytes.TrimSpace(setgroups)) != "deny"
-
-	if allowSupGroups {
-		suppGroups := append(execUser.Sgids, addGroups...)
-		if err := unix.Setgroups(suppGroups); err != nil {
-			return &os.SyscallError{Syscall: "setgroups", Err: err}
-		}
-	}
-
-	if err := system.Setgid(execUser.Gid); err != nil {
-		return err
-	}
-	if err := system.Setuid(execUser.Uid); err != nil {
-		return err
-	}
-
-	// if we didn't get HOME already, set it based on the user's HOME
-	if envHome := os.Getenv("HOME"); envHome == "" {
-		if err := os.Setenv("HOME", execUser.Home); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // fixStdioPermissions fixes the permissions of PID 1's STDIO within the container to the specified user.
 // The ownership needs to match because it is created outside of the container and needs to be
 // localized.
@@ -407,15 +141,6 @@ func fixStdioPermissions(u *user.ExecUser) error {
 				continue
 			}
 			return err
-		}
-	}
-	return nil
-}
-
-func setupRlimits(limits []configs.Rlimit, pid int) error {
-	for _, rlimit := range limits {
-		if err := unix.Prlimit(pid, rlimit.Type, &unix.Rlimit{Max: rlimit.Hard, Cur: rlimit.Soft}, nil); err != nil {
-			return fmt.Errorf("error setting rlimit type %v: %w", rlimit.Type, err)
 		}
 	}
 	return nil
@@ -625,4 +350,278 @@ func setupRoute(config *configs.Config) error {
 		}
 	}
 	return nil
+}
+
+// setupConsole sets up the console from inside the container, and sends the
+// master pty fd to the config.Pipe (using cmsg). This is done to ensure that
+// consoles are scoped to a container properly (see runc#814 and the many
+// issues related to that). This has to be run *after* we've pivoted to the new
+// rootfs (and the users' configuration is entirely set up).
+func setupConsole(socket *os.File, config *initConfig, mount bool) error {
+	defer socket.Close()
+	// At this point, /dev/ptmx points to something that we would expect. We
+	// used to change the owner of the slave path, but since the /dev/pts mount
+	// can have gid=X set (at the users' option). So touching the owner of the
+	// slave PTY is not necessary, as the kernel will handle that for us. Note
+	// however, that setupUser (specifically fixStdioPermissions) *will* change
+	// the UID owner of the console to be the user the process will run as (so
+	// they can actually control their console).
+
+	pty, slavePath, err := console.NewPty()
+	if err != nil {
+		return err
+	}
+
+	// After we return from here, we don't need the console anymore.
+	defer pty.Close()
+
+	if config.ConsoleHeight != 0 && config.ConsoleWidth != 0 {
+		err = pty.Resize(console.WinSize{
+			Height: config.ConsoleHeight,
+			Width:  config.ConsoleWidth,
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
+	// Mount the console inside our rootfs.
+	if mount {
+		if err := mountConsole(slavePath); err != nil {
+			return err
+		}
+	}
+	// While we can access console.master, using the API is a good idea.
+	if err := utils.SendFd(socket, pty.Name(), pty.Fd()); err != nil {
+		return err
+	}
+	// Now, dup over all the things.
+	return dupStdio(slavePath)
+}
+
+// syncParentReady sends to the given pipe a JSON payload which indicates that
+// the init is ready to Exec the child process. It then waits for the parent to
+// indicate that it is cleared to Exec.
+func syncParentReady(pipe io.ReadWriter) error {
+	// Tell parent.
+	if err := writeSync(pipe, procReady); err != nil {
+		return err
+	}
+
+	// Wait for parent to give the all-clear.
+	return readSync(pipe, procRun)
+}
+
+// setupUser 更改容器内用户的组、gid和uid
+func setupUser(config *initConfig) error {
+	// Set up defaults.
+	defaultExecUser := user.ExecUser{
+		Uid:  0,
+		Gid:  0,
+		Home: "/",
+	}
+
+	passwdPath, err := user.GetPasswdPath()
+	if err != nil {
+		return err
+	}
+
+	groupPath, err := user.GetGroupPath()
+	if err != nil {
+		return err
+	}
+
+	execUser, err := user.GetExecUserPath(config.User, &defaultExecUser, passwdPath, groupPath)
+	if err != nil {
+		return err
+	}
+
+	var addGroups []int
+	if len(config.AdditionalGroups) > 0 {
+		addGroups, err = user.GetAdditionalGroupsPath(config.AdditionalGroups, groupPath)
+		if err != nil {
+			return err
+		}
+	}
+
+	// 与其在后面的setuid(2)和setgid(2)中出错，不如检查这里是否映射了用户。
+	if _, err := config.Config.HostUID(execUser.Uid); err != nil {
+		return errors.New("cannot set uid to unmapped user in user namespace")
+	}
+	if _, err := config.Config.HostGID(execUser.Gid); err != nil {
+		return errors.New("cannot set gid to unmapped user in user namespace")
+	}
+
+	if config.RootlessEUID {
+		// We cannot set any additional groups in a rootless container and thus
+		// we bail if the user asked us to do so. TODO: We currently can't do
+		// this check earlier, but if libcontainer.Process.User was typesafe
+		// this might work.
+		// 在无根权限的容器中，我们不能设置任何额外的组（groups）。
+		// 这可能是因为容器内的用户通常不应该有权限修改或增加新的组，这是为了保持容器之间以及容器和宿主机之间的隔离性。
+		if len(addGroups) > 0 {
+			return errors.New("cannot set any additional groups in a rootless container")
+		}
+	}
+
+	// Before we change to the container's user make sure that the processes
+	// STDIO is correctly owned by the user that we are switching to.
+	if err := fixStdioPermissions(execUser); err != nil {
+		return err
+	}
+
+	setgroups, err := os.ReadFile("/proc/self/setgroups")
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	// This isn't allowed in an unprivileged user namespace since Linux 3.19.
+	// There's nothing we can do about /etc/group entries, so we silently
+	// ignore setting groups here (since the user didn't explicitly ask us to
+	// set the group).
+	allowSupGroups := !config.RootlessEUID && string(bytes.TrimSpace(setgroups)) != "deny"
+
+	if allowSupGroups {
+		suppGroups := append(execUser.Sgids, addGroups...)
+		if err := unix.Setgroups(suppGroups); err != nil {
+			return &os.SyscallError{Syscall: "setgroups", Err: err}
+		}
+	}
+
+	if err := system.Setgid(execUser.Gid); err != nil {
+		return err
+	}
+	if err := system.Setuid(execUser.Uid); err != nil {
+		return err
+	}
+
+	// if we didn't get HOME already, set it based on the user's HOME
+	if envHome := os.Getenv("HOME"); envHome == "" {
+		if err := os.Setenv("HOME", execUser.Home); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// finalizeNamespace drops the caps, sets the correct user
+// and working dir, and closes any leaked file descriptors
+// before executing the command inside the namespace
+func finalizeNamespace(config *initConfig) error {
+	// //确保我们可能意外继承的所有不需要的fds都标记为close-on-exec，这样它们就不会出现在容器中
+	if err := utils.CloseExecFrom(config.PassedFilesCount + 3); err != nil {
+		return fmt.Errorf("error closing exec fds: %w", err)
+	}
+
+	// we only do chdir if it's specified
+	doChdir := config.Cwd != ""
+	if doChdir {
+		// First, attempt the chdir before setting up the user.
+		// This could allow us to access a directory that the user running runc can access
+		// but the container user cannot.
+		err := unix.Chdir(config.Cwd)
+		switch {
+		case err == nil:
+			doChdir = false
+		case os.IsPermission(err):
+			// If we hit an EPERM, we should attempt again after setting up user.
+			// This will allow us to successfully chdir if the container user has access
+			// to the directory, but the user running runc does not.
+			// This is useful in cases where the cwd is also a volume that's been chowned to the container user.
+		default:
+			return fmt.Errorf("chdir to cwd (%q) set in config.json failed: %w", config.Cwd, err)
+		}
+	}
+
+	caps := &configs.Capabilities{}
+	if config.Capabilities != nil {
+		caps = config.Capabilities
+	} else if config.Config.Capabilities != nil {
+		caps = config.Config.Capabilities
+	}
+	w, err := capabilities.New(caps)
+	if err != nil {
+		return err
+	}
+	// drop capabilities in bounding set before changing user
+	if err := w.ApplyBoundingSet(); err != nil {
+		return fmt.Errorf("unable to apply bounding set: %w", err)
+	}
+	// 在更改用户时保留现有功能
+	if err := system.SetKeepCaps(); err != nil {
+		return fmt.Errorf("unable to set keep caps: %w", err)
+	}
+	if err := setupUser(config); err != nil {
+		return fmt.Errorf("unable to setup user: %w", err)
+	}
+	// Change working directory AFTER the user has been set up, if we haven't done it yet.
+	if doChdir {
+		if err := unix.Chdir(config.Cwd); err != nil {
+			return fmt.Errorf("chdir to cwd (%q) set in config.json failed: %w", config.Cwd, err)
+		}
+	}
+	// Make sure our final working directory is inside the container.
+	if err := verifyCwd(); err != nil {
+		return err
+	}
+	if err := system.ClearKeepCaps(); err != nil {
+		return fmt.Errorf("unable to clear keep caps: %w", err)
+	}
+	if err := w.ApplyCaps(); err != nil {
+		return fmt.Errorf("unable to apply caps: %w", err)
+	}
+	return nil
+}
+
+// syncParentSeccomp sends to the given pipe a JSON payload which
+// indicates that the parent should pick up the seccomp fd with pidfd_getfd()
+// and send it to the seccomp agent over a unix socket. It then waits for
+// the parent to indicate that it is cleared to resume and closes the seccompFd.
+// If the seccompFd is -1, there isn't anything to sync with the parent, so it
+// returns no error.
+func syncParentSeccomp(pipe io.ReadWriter, seccompFd int) error {
+	if seccompFd == -1 {
+		return nil
+	}
+
+	// Tell parent.
+	if err := writeSyncWithFd(pipe, procSeccomp, seccompFd); err != nil {
+		unix.Close(seccompFd)
+		return err
+	}
+
+	// Wait for parent to give the all-clear.
+	if err := readSync(pipe, procSeccompDone); err != nil {
+		unix.Close(seccompFd)
+		return fmt.Errorf("sync parent seccomp: %w", err)
+	}
+
+	if err := unix.Close(seccompFd); err != nil {
+		return fmt.Errorf("close seccomp fd: %w", err)
+	}
+
+	return nil
+}
+
+func setupRlimits(limits []configs.Rlimit, pid int) error {
+	for _, rlimit := range limits {
+		if err := unix.Prlimit(pid, rlimit.Type, &unix.Rlimit{Max: rlimit.Hard, Cur: rlimit.Soft}, nil); err != nil {
+			return fmt.Errorf("error setting rlimit type %v: %w", rlimit.Type, err)
+		}
+	}
+	return nil
+}
+
+// syncParentHooks sends to the given pipe a JSON payload which indicates that
+// the parent should execute pre-start hooks. It then waits for the parent to
+// indicate that it is cleared to resume.
+func syncParentHooks(pipe io.ReadWriter) error {
+	// Tell parent.
+	if err := writeSync(pipe, procHooks); err != nil {
+		return err
+	}
+
+	// Wait for parent to give the all-clear.
+	return readSync(pipe, procResume)
 }

@@ -56,7 +56,7 @@ func SetParentDeathSignal(sig uintptr) error {
 	return nil
 }
 
-func GetParentDeathSignal() (ParentDeathSignal, error) {
+func GetParentDeathSignal() (ParentDeathSignal, error) { // 获取父进程终止时发送给当前进程的信号
 	var sig int
 	if err := unix.Prctl(unix.PR_GET_PDEATHSIG, uintptr(unsafe.Pointer(&sig)), 0, 0, 0); err != nil {
 		return -1, err

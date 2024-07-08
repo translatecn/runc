@@ -57,6 +57,7 @@ func (l *linuxSetnsInit) Init() error {
 		}
 	}
 	if l.config.NoNewPrivileges {
+		// 一个新的通 用的机制来保证一个进程安全地修改其执行环境并跨execve持久化。
 		if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 			return err
 		}

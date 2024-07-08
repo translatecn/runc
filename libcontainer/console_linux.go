@@ -6,23 +6,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// mount initializes the console inside the rootfs mounting with the specified mount label
-// and applying the correct ownership of the console.
-func mountConsole(slavePath string) error {
-	oldMask := unix.Umask(0o000)
-	defer unix.Umask(oldMask)
-	f, err := os.Create("/dev/console")
-	if err != nil && !os.IsExist(err) {
-		return err
-	}
-	if f != nil {
-		f.Close()
-	}
-	return mount(slavePath, "/dev/console", "", "bind", unix.MS_BIND, "")
-}
-
-// dupStdio opens the slavePath for the console and dups the fds to the current
-// processes stdio, fd 0,1,2.
+// dupStdio opens the slavePath for the console and dups the fds to the current processes stdio, fd 0,1,2.
+// 打开控制台的slavePath，并将fds转储到当前进程stdio、fd0、fd1、fd2。
 func dupStdio(slavePath string) error {
 	fd, err := unix.Open(slavePath, unix.O_RDWR, 0)
 	if err != nil {
@@ -38,4 +23,19 @@ func dupStdio(slavePath string) error {
 		}
 	}
 	return nil
+}
+
+// mount initializes the console inside the rootfs mounting with the specified mount label
+// and applying the correct ownership of the console.
+func mountConsole(slavePath string) error {
+	oldMask := unix.Umask(0o000)
+	defer unix.Umask(oldMask)
+	f, err := os.Create("/dev/console")
+	if err != nil && !os.IsExist(err) {
+		return err
+	}
+	if f != nil {
+		f.Close()
+	}
+	return mount(slavePath, "/dev/console", "", "bind", unix.MS_BIND, "")
 }

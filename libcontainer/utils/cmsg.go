@@ -89,7 +89,7 @@ func SendFd(socket *os.File, name string, fd uintptr) error {
 	return SendFds(socket, []byte(name), int(fd))
 }
 
-// SendFds sends a list of files descriptor and msg over the given AF_UNIX socket.
+// SendFds 通过给定的 AF_UNIX 套接字发送一个文件描述符和消息的列表。
 func SendFds(socket *os.File, msg []byte, fds ...int) error {
 	oob := unix.UnixRights(fds...)
 	return unix.Sendmsg(int(socket.Fd()), msg, oob, nil, 0)

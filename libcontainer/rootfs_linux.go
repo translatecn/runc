@@ -153,37 +153,6 @@ func prepareRootfs(pipe io.ReadWriter, iConfig *initConfig, mountFds []int) (err
 	return nil
 }
 
-// finalizeRootfs sets anything to ro if necessary. You must call
-// prepareRootfs first.
-func finalizeRootfs(config *configs.Config) (err error) {
-	// All tmpfs mounts and /dev were previously mounted as rw
-	// by mountPropagate. Remount them read-only as requested.
-	for _, m := range config.Mounts {
-		if m.Flags&unix.MS_RDONLY != unix.MS_RDONLY {
-			continue
-		}
-		if m.Device == "tmpfs" || utils.CleanPath(m.Destination) == "/dev" {
-			if err := remountReadonly(m); err != nil {
-				return err
-			}
-		}
-	}
-
-	// set rootfs ( / ) as readonly
-	if config.Readonlyfs {
-		if err := setReadonly(); err != nil {
-			return fmt.Errorf("error setting rootfs as readonly: %w", err)
-		}
-	}
-
-	if config.Umask != nil {
-		unix.Umask(int(*config.Umask))
-	} else {
-		unix.Umask(0o022)
-	}
-	return nil
-}
-
 func mountCgroupV1(m *configs.Mount, c *mountConfig) error {
 	binds, err := getCgroupMounts(m)
 	if err != nil {
@@ -557,21 +526,6 @@ func prepareRoot(config *configs.Config) error {
 	return mount(config.Rootfs, config.Rootfs, "", "bind", unix.MS_BIND|unix.MS_REC, "")
 }
 
-func setReadonly() error {
-	flags := uintptr(unix.MS_BIND | unix.MS_REMOUNT | unix.MS_RDONLY)
-
-	err := mount("", "/", "", "", flags, "")
-	if err == nil {
-		return nil
-	}
-	var s unix.Statfs_t
-	if err := unix.Statfs("/", &s); err != nil {
-		return &os.PathError{Op: "statfs", Path: "/", Err: err}
-	}
-	flags |= uintptr(s.Flags)
-	return mount("", "/", "", "", flags, "")
-}
-
 func setupPtmx(config *configs.Config) error {
 	ptmx := filepath.Join(config.Rootfs, "dev/ptmx")
 	if err := os.Remove(ptmx); err != nil && !os.IsNotExist(err) {
@@ -735,28 +689,6 @@ func createIfNotExists(path string, isDir bool) error {
 	return nil
 }
 
-// readonlyPath will make a path read only.
-func readonlyPath(path string) error {
-	if err := mount(path, path, "", "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
-	}
-
-	var s unix.Statfs_t
-	if err := unix.Statfs(path, &s); err != nil {
-		return &os.PathError{Op: "statfs", Path: path, Err: err}
-	}
-	flags := uintptr(s.Flags) & (unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC)
-
-	if err := mount(path, path, "", "", flags|unix.MS_BIND|unix.MS_REMOUNT|unix.MS_RDONLY, ""); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // remountReadonly will remount an existing mount point and ensure that it is read-only.
 func remountReadonly(m *configs.Mount) error {
 	var (
@@ -781,28 +713,6 @@ func remountReadonly(m *configs.Mount) error {
 		return nil
 	}
 	return fmt.Errorf("unable to mount %s as readonly max retries reached", dest)
-}
-
-// maskPath masks the top of the specified path inside a container to avoid
-// security issues from processes reading information from non-namespace aware
-// mounts ( proc/kcore ).
-// For files, maskPath bind mounts /dev/null over the top of the specified path.
-// For directories, maskPath mounts read-only tmpfs over the top of the specified path.
-func maskPath(path string, mountLabel string) error {
-	if err := mount("/dev/null", path, "", "", unix.MS_BIND, ""); err != nil && !errors.Is(err, os.ErrNotExist) {
-		if errors.Is(err, unix.ENOTDIR) {
-			return mount("tmpfs", path, "", "tmpfs", unix.MS_RDONLY, label.FormatMountLabel("", mountLabel))
-		}
-		return err
-	}
-	return nil
-}
-
-// writeSystemProperty writes the value to a path under /proc/sys as determined from the key.
-// For e.g. net.ipv4.ip_forward translated to /proc/sys/net/ipv4/ip_forward.
-func writeSystemProperty(key, value string) error {
-	keyPath := strings.Replace(key, ".", "/", -1)
-	return os.WriteFile(path.Join("/proc/sys", keyPath), []byte(value), 0o644)
 }
 
 func remount(m *configs.Mount, rootfs string, mountFd *int) error {
@@ -1157,5 +1067,95 @@ func prepareBindMount(m *configs.Mount, rootfs string, mountFd *int) error {
 		return err
 	}
 
+	return nil
+}
+func setReadonly() error {
+	flags := uintptr(unix.MS_BIND | unix.MS_REMOUNT | unix.MS_RDONLY)
+
+	err := mount("", "/", "", "", flags, "")
+	if err == nil {
+		return nil
+	}
+	var s unix.Statfs_t
+	if err := unix.Statfs("/", &s); err != nil {
+		return &os.PathError{Op: "statfs", Path: "/", Err: err}
+	}
+	flags |= uintptr(s.Flags)
+	return mount("", "/", "", "", flags, "")
+}
+
+// finalizeRootfs sets anything to ro if necessary. You must call
+// prepareRootfs first.
+func finalizeRootfs(config *configs.Config) (err error) {
+	// All tmpfs mounts and /dev were previously mounted as rw
+	// by mountPropagate. Remount them read-only as requested.
+	for _, m := range config.Mounts {
+		if m.Flags&unix.MS_RDONLY != unix.MS_RDONLY {
+			continue
+		}
+		if m.Device == "tmpfs" || utils.CleanPath(m.Destination) == "/dev" {
+			if err := remountReadonly(m); err != nil {
+				return err
+			}
+		}
+	}
+
+	// set rootfs ( / ) as readonly
+	if config.Readonlyfs {
+		if err := setReadonly(); err != nil {
+			return fmt.Errorf("error setting rootfs as readonly: %w", err)
+		}
+	}
+
+	if config.Umask != nil {
+		unix.Umask(int(*config.Umask))
+	} else {
+		unix.Umask(0o022)
+	}
+	return nil
+}
+
+// writeSystemProperty writes the value to a path under /proc/sys as determined from the key.
+// For e.g. net.ipv4.ip_forward translated to /proc/sys/net/ipv4/ip_forward.
+func writeSystemProperty(key, value string) error {
+	keyPath := strings.Replace(key, ".", "/", -1)
+	return os.WriteFile(path.Join("/proc/sys", keyPath), []byte(value), 0o644)
+}
+
+// readonlyPath will make a path read only.
+func readonlyPath(path string) error {
+	if err := mount(path, path, "", "", unix.MS_BIND|unix.MS_REC, ""); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+
+	var s unix.Statfs_t
+	if err := unix.Statfs(path, &s); err != nil {
+		return &os.PathError{Op: "statfs", Path: path, Err: err}
+	}
+	flags := uintptr(s.Flags) & (unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC)
+
+	if err := mount(path, path, "", "", flags|unix.MS_BIND|unix.MS_REMOUNT|unix.MS_RDONLY, ""); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// maskPath masks the top of the specified path inside a container to avoid
+// security issues from processes reading information from non-namespace aware
+// mounts ( proc/kcore ).
+// For files, maskPath bind mounts /dev/null over the top of the specified path.
+// For directories, maskPath mounts read-only tmpfs over the top of the specified path.
+// 函数用于在容器内部屏蔽指定路径的顶部，以避免由于进程从非命名空间感知挂载（如 proc/kcore）读取信息而引发的安全问题。
+func maskPath(path string, mountLabel string) error {
+	if err := mount("/dev/null", path, "", "", unix.MS_BIND, ""); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, unix.ENOTDIR) {
+			return mount("tmpfs", path, "", "tmpfs", unix.MS_RDONLY, label.FormatMountLabel("", mountLabel))
+		}
+		return err
+	}
 	return nil
 }

@@ -258,6 +258,39 @@ func (l *LinuxFactory) Create(id string, config *configs.Config) (Container, err
 	return c, nil
 }
 
+func parseMountFds() ([]int, error) {
+	fdsJson := os.Getenv("_LIBCONTAINER_MOUNT_FDS")
+	if fdsJson == "" {
+		// Always return the nil slice if no fd is present.
+		return nil, nil
+	}
+
+	var mountFds []int
+	if err := json.Unmarshal([]byte(fdsJson), &mountFds); err != nil {
+		return nil, fmt.Errorf("Error unmarshalling _LIBCONTAINER_MOUNT_FDS: %w", err)
+	}
+
+	return mountFds, nil
+}
+
+// NewuidmapPath returns an option func to configure a LinuxFactory with the
+// provided ..
+func NewuidmapPath(newuidmapPath string) func(*LinuxFactory) error {
+	return func(l *LinuxFactory) error {
+		l.NewuidmapPath = newuidmapPath
+		return nil
+	}
+}
+
+// NewgidmapPath returns an option func to configure a LinuxFactory with the
+// provided ..
+func NewgidmapPath(newgidmapPath string) func(*LinuxFactory) error {
+	return func(l *LinuxFactory) error {
+		l.NewgidmapPath = newgidmapPath
+		return nil
+	}
+}
+
 // StartInitialization 通过从父容器打开管道fd读取配置和状态来加载容器
 // 这是 reexec 的底层实现细节，不应该被外部使用
 func (l *LinuxFactory) StartInitialization() (err error) {
@@ -340,39 +373,6 @@ func (l *LinuxFactory) StartInitialization() (err error) {
 
 	// If Init succeeds, syscall.Exec will not return, hence none of the defers will be called.
 	return i.Init()
-}
-
-func parseMountFds() ([]int, error) {
-	fdsJson := os.Getenv("_LIBCONTAINER_MOUNT_FDS")
-	if fdsJson == "" {
-		// Always return the nil slice if no fd is present.
-		return nil, nil
-	}
-
-	var mountFds []int
-	if err := json.Unmarshal([]byte(fdsJson), &mountFds); err != nil {
-		return nil, fmt.Errorf("Error unmarshalling _LIBCONTAINER_MOUNT_FDS: %w", err)
-	}
-
-	return mountFds, nil
-}
-
-// NewuidmapPath returns an option func to configure a LinuxFactory with the
-// provided ..
-func NewuidmapPath(newuidmapPath string) func(*LinuxFactory) error {
-	return func(l *LinuxFactory) error {
-		l.NewuidmapPath = newuidmapPath
-		return nil
-	}
-}
-
-// NewgidmapPath returns an option func to configure a LinuxFactory with the
-// provided ..
-func NewgidmapPath(newgidmapPath string) func(*LinuxFactory) error {
-	return func(l *LinuxFactory) error {
-		l.NewgidmapPath = newgidmapPath
-		return nil
-	}
 }
 
 // New returns a linux based container factory based in the root directory and

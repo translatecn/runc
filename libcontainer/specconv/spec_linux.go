@@ -961,36 +961,6 @@ func createCommandHook(h specs.Hook) configs.Command {
 	return cmd
 }
 
-func createHooks(rspec *specs.Spec, config *configs.Config) {
-	config.Hooks = configs.Hooks{}
-	if rspec.Hooks != nil {
-		for _, h := range rspec.Hooks.Prestart {
-			cmd := createCommandHook(h)
-			config.Hooks[configs.Prestart] = append(config.Hooks[configs.Prestart], configs.NewCommandHook(cmd))
-		}
-		for _, h := range rspec.Hooks.CreateRuntime {
-			cmd := createCommandHook(h)
-			config.Hooks[configs.CreateRuntime] = append(config.Hooks[configs.CreateRuntime], configs.NewCommandHook(cmd))
-		}
-		for _, h := range rspec.Hooks.CreateContainer {
-			cmd := createCommandHook(h)
-			config.Hooks[configs.CreateContainer] = append(config.Hooks[configs.CreateContainer], configs.NewCommandHook(cmd))
-		}
-		for _, h := range rspec.Hooks.StartContainer {
-			cmd := createCommandHook(h)
-			config.Hooks[configs.StartContainer] = append(config.Hooks[configs.StartContainer], configs.NewCommandHook(cmd))
-		}
-		for _, h := range rspec.Hooks.Poststart {
-			cmd := createCommandHook(h)
-			config.Hooks[configs.Poststart] = append(config.Hooks[configs.Poststart], configs.NewCommandHook(cmd))
-		}
-		for _, h := range rspec.Hooks.Poststop {
-			cmd := createCommandHook(h)
-			config.Hooks[configs.Poststop] = append(config.Hooks[configs.Poststop], configs.NewCommandHook(cmd))
-		}
-	}
-}
-
 // CreateLibcontainerConfig creates a new libcontainer configuration from a
 // given specification and a cgroup name
 func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
@@ -1152,4 +1122,34 @@ func CreateLibcontainerConfig(opts *CreateOpts) (*configs.Config, error) {
 	createHooks(spec, config)
 	config.Version = specs.Version
 	return config, nil
+}
+
+func createHooks(rspec *specs.Spec, config *configs.Config) {
+	config.Hooks = configs.Hooks{}
+	if rspec.Hooks != nil {
+		for _, h := range rspec.Hooks.Prestart {
+			cmd := createCommandHook(h)
+			config.Hooks[configs.Prestart] = append(config.Hooks[configs.Prestart], configs.NewCommandHook(cmd))
+		}
+		for _, h := range rspec.Hooks.CreateRuntime {
+			cmd := createCommandHook(h)
+			config.Hooks[configs.CreateRuntime] = append(config.Hooks[configs.CreateRuntime], configs.NewCommandHook(cmd))
+		}
+		for _, h := range rspec.Hooks.CreateContainer {
+			cmd := createCommandHook(h)
+			config.Hooks[configs.CreateContainer] = append(config.Hooks[configs.CreateContainer], configs.NewCommandHook(cmd))
+		}
+		for _, h := range rspec.Hooks.StartContainer {
+			cmd := createCommandHook(h)
+			config.Hooks[configs.StartContainer] = append(config.Hooks[configs.StartContainer], configs.NewCommandHook(cmd))
+		}
+		for _, h := range rspec.Hooks.Poststart {
+			cmd := createCommandHook(h)
+			config.Hooks[configs.Poststart] = append(config.Hooks[configs.Poststart], configs.NewCommandHook(cmd))
+		}
+		for _, h := range rspec.Hooks.Poststop {
+			cmd := createCommandHook(h)
+			config.Hooks[configs.Poststop] = append(config.Hooks[configs.Poststop], configs.NewCommandHook(cmd))
+		}
+	}
 }

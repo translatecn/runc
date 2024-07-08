@@ -25,8 +25,7 @@ type signalHandler struct {
 	notifySocket *notifySocket
 }
 
-// forward handles the main signal event loop forwarding, resizing, or reaping depending
-// on the signal received.
+// forward 根据接收到的信号处理主信号事件循环转发、调整大小或收获。
 func (h *signalHandler) forward(process *libcontainer.Process, tty *tty, detach bool) (int, error) {
 	// make sure we know the pid of our main process so that we can return
 	// after it dies.

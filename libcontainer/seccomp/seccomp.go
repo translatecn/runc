@@ -1,6 +1,3 @@
-//go:build cgo && seccomp
-// +build cgo,seccomp
-
 package seccomp
 
 import (
@@ -25,10 +22,8 @@ const (
 	syscallMaxArguments int = 6
 )
 
-// InitSeccomp installs the seccomp filters to be used in the container as
-// specified in config.
-// Returns the seccomp file descriptor if any of the filters include a
-// SCMP_ACT_NOTIFY action, otherwise returns -1.
+// InitSeccomp 安装容器中使用的 seccomp 过滤器，如 config 中指定。
+// 如果任何过滤器包含 SCMP_ACT_NOTIFY 操作，则返回 seccomp 文件描述符，否则返回 -1。
 func InitSeccomp(config *configs.Seccomp) (int, error) {
 	if config == nil {
 		return -1, errors.New("cannot initialize Seccomp - nil config passed")
@@ -108,36 +103,6 @@ func InitSeccomp(config *configs.Seccomp) (int, error) {
 	}
 
 	return seccompFd, nil
-}
-
-// Convert Libcontainer Action to Libseccomp ScmpAction
-func getAction(act configs.Action, errnoRet *uint) (libseccomp.ScmpAction, error) {
-	switch act {
-	case configs.Kill, configs.KillThread:
-		return libseccomp.ActKillThread, nil
-	case configs.Errno:
-		if errnoRet != nil {
-			return libseccomp.ActErrno.SetReturnCode(int16(*errnoRet)), nil
-		}
-		return actErrno, nil
-	case configs.Trap:
-		return libseccomp.ActTrap, nil
-	case configs.Allow:
-		return libseccomp.ActAllow, nil
-	case configs.Trace:
-		if errnoRet != nil {
-			return libseccomp.ActTrace.SetReturnCode(int16(*errnoRet)), nil
-		}
-		return actTrace, nil
-	case configs.Log:
-		return libseccomp.ActLog, nil
-	case configs.Notify:
-		return libseccomp.ActNotify, nil
-	case configs.KillProcess:
-		return libseccomp.ActKillProcess, nil
-	default:
-		return libseccomp.ActInvalid, errors.New("invalid action, cannot use in rule")
-	}
 }
 
 // Convert Libcontainer Operator to Libseccomp ScmpCompareOp
@@ -266,3 +231,33 @@ func Version() (uint, uint, uint) {
 
 // Enabled is true if seccomp support is compiled in.
 const Enabled = true
+
+// Convert Libcontainer Action to Libseccomp ScmpAction
+func getAction(act configs.Action, errnoRet *uint) (libseccomp.ScmpAction, error) {
+	switch act {
+	case configs.Kill, configs.KillThread:
+		return libseccomp.ActKillThread, nil
+	case configs.Errno:
+		if errnoRet != nil {
+			return libseccomp.ActErrno.SetReturnCode(int16(*errnoRet)), nil
+		}
+		return actErrno, nil
+	case configs.Trap:
+		return libseccomp.ActTrap, nil
+	case configs.Allow:
+		return libseccomp.ActAllow, nil
+	case configs.Trace:
+		if errnoRet != nil {
+			return libseccomp.ActTrace.SetReturnCode(int16(*errnoRet)), nil
+		}
+		return actTrace, nil
+	case configs.Log:
+		return libseccomp.ActLog, nil
+	case configs.Notify:
+		return libseccomp.ActNotify, nil
+	case configs.KillProcess:
+		return libseccomp.ActKillProcess, nil
+	default:
+		return libseccomp.ActInvalid, errors.New("invalid action, cannot use in rule")
+	}
+}

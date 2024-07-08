@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-
 	"github.com/opencontainers/runc/libcontainer/utils"
+	"io"
 )
 
 type syncType string
@@ -50,48 +49,6 @@ func (i initError) Error() string {
 	return i.Message
 }
 
-// readSync is used to read from a synchronisation pipe. An error is returned
-// if we got an initError, the pipe was closed, or we got an unexpected flag.
-func readSync(pipe io.Reader, expected syncType) error {
-	var procSync syncT
-	if err := json.NewDecoder(pipe).Decode(&procSync); err != nil {
-		if errors.Is(err, io.EOF) {
-			return errors.New("parent closed synchronisation channel")
-		}
-		return fmt.Errorf("failed reading error from parent: %w", err)
-	}
-
-	if procSync.Type == procError {
-		var ierr initError
-
-		if err := json.NewDecoder(pipe).Decode(&ierr); err != nil {
-			return fmt.Errorf("failed reading error from parent: %w", err)
-		}
-
-		return &ierr
-	}
-
-	if procSync.Type != expected {
-		return errors.New("invalid synchronisation flag from parent")
-	}
-	return nil
-}
-
-// writeSyncWithFd is used to write to a synchronisation pipe. An error is
-// returned if there was a problem writing the payload.
-func writeSyncWithFd(pipe io.Writer, sync syncType, fd int) error {
-	if err := utils.WriteJSON(pipe, syncT{sync, fd}); err != nil {
-		return fmt.Errorf("writing syncT %q: %w", string(sync), err)
-	}
-	return nil
-}
-
-// writeSync is used to write to a synchronisation pipe. An error is returned
-// if there was a problem writing the payload.
-func writeSync(pipe io.Writer, sync syncType) error {
-	return writeSyncWithFd(pipe, sync, -1)
-}
-
 // parseSync runs the given callback function on each syncT received from the
 // child. It will return once io.EOF is returned from the given pipe.
 func parseSync(pipe io.Reader, fn func(*syncT) error) error {
@@ -121,6 +78,48 @@ func parseSync(pipe io.Reader, fn func(*syncT) error) error {
 		if err := fn(&sync); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// writeSyncWithFd is used to write to a synchronisation pipe. An error is
+// returned if there was a problem writing the payload.
+func writeSyncWithFd(pipe io.Writer, sync syncType, fd int) error {
+	if err := utils.WriteJSON(pipe, syncT{sync, fd}); err != nil {
+		return fmt.Errorf("writing syncT %q: %w", string(sync), err)
+	}
+	return nil
+}
+
+// writeSync is used to write to a synchronisation pipe. An error is returned
+// if there was a problem writing the payload.
+func writeSync(pipe io.Writer, sync syncType) error {
+	return writeSyncWithFd(pipe, sync, -1)
+}
+
+// readSync is used to read from a synchronisation pipe. An error is returned
+// if we got an initError, the pipe was closed, or we got an unexpected flag.
+func readSync(pipe io.Reader, expected syncType) error {
+	var procSync syncT
+	if err := json.NewDecoder(pipe).Decode(&procSync); err != nil {
+		if errors.Is(err, io.EOF) {
+			return errors.New("parent closed synchronisation channel")
+		}
+		return fmt.Errorf("failed reading error from parent: %w", err)
+	}
+
+	if procSync.Type == procError {
+		var ierr initError
+
+		if err := json.NewDecoder(pipe).Decode(&ierr); err != nil {
+			return fmt.Errorf("failed reading error from parent: %w", err)
+		}
+
+		return &ierr
+	}
+
+	if procSync.Type != expected {
+		return errors.New("invalid synchronisation flag from parent")
 	}
 	return nil
 }

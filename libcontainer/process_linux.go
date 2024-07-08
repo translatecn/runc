@@ -4,7 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/opencontainers/runc/libcontainer/cgroups"
+	"github.com/opencontainers/runc/libcontainer/cgroups/fs2"
+	"github.com/opencontainers/runc/libcontainer/configs"
+	"github.com/opencontainers/runc/libcontainer/intelrdt"
+	"github.com/opencontainers/runc/libcontainer/system"
+	"github.com/opencontainers/runc/libcontainer/utils"
 	"github.com/opencontainers/runc/over/logs"
+	"github.com/opencontainers/runtime-spec/specs-go"
+	"github.com/sirupsen/logrus"
+	"golang.org/x/sys/unix"
 	"io"
 	"net"
 	"os"
@@ -12,16 +21,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
-
-	"github.com/opencontainers/runc/libcontainer/cgroups"
-	"github.com/opencontainers/runc/libcontainer/cgroups/fs2"
-	"github.com/opencontainers/runc/libcontainer/configs"
-	"github.com/opencontainers/runc/libcontainer/intelrdt"
-	"github.com/opencontainers/runc/libcontainer/system"
-	"github.com/opencontainers/runc/libcontainer/utils"
-	"github.com/opencontainers/runtime-spec/specs-go"
-	"github.com/sirupsen/logrus"
-	"golang.org/x/sys/unix"
 )
 
 type parentProcess interface {
@@ -317,11 +316,11 @@ func (p *initProcess) externalDescriptors() []string {
 	return p.fds
 }
 
-func (p *initProcess) getChildPid() (int, error) {
+func (p *initProcess) getChildPid() (pid, int, error) {
 	var pid pid
 	if err := json.NewDecoder(p.messageSockPair.parent).Decode(&pid); err != nil {
 		_ = p.cmd.Wait()
-		return -1, err
+		return pid, -1, err
 	}
 
 	// Clean up the zombie parent process
@@ -331,7 +330,7 @@ func (p *initProcess) getChildPid() (int, error) {
 	// Ignore the error in case the child has already been reaped for any reason
 	_, _ = firstChildProcess.Wait()
 
-	return pid.Pid, nil
+	return pid, pid.Pid, nil
 }
 
 func (p *initProcess) waitForChildExit(childPid int) error {
@@ -351,6 +350,210 @@ func (p *initProcess) waitForChildExit(childPid int) error {
 	}
 	p.cmd.Process = process
 	p.process.ops = p
+	return nil
+}
+
+func (p *initProcess) wait() (*os.ProcessState, error) {
+	err := p.cmd.Wait()
+	// we should kill all processes in cgroup when init is died if we use host PID namespace
+	if p.sharePidns {
+		_ = signalAllProcesses(p.manager, unix.SIGKILL)
+	}
+	return p.cmd.ProcessState, err
+}
+
+func (p *initProcess) terminate() error {
+	if p.cmd.Process == nil {
+		return nil
+	}
+	err := p.cmd.Process.Kill()
+	if _, werr := p.wait(); err == nil {
+		err = werr
+	}
+	return err
+}
+
+func (p *initProcess) startTime() (uint64, error) {
+	stat, err := system.Stat(p.pid())
+	return stat.StartTime, err
+}
+
+func (p *initProcess) updateSpecState() error {
+	s, err := p.container.currentOCIState()
+	if err != nil {
+		return err
+	}
+
+	p.config.SpecState = s
+	return nil
+}
+
+func (p *initProcess) createNetworkInterfaces() error {
+	for _, config := range p.config.Config.Networks {
+		strategy, err := getStrategy(config.Type)
+		if err != nil {
+			return err
+		}
+		n := &network{
+			Network: *config,
+		}
+		if err := strategy.create(n, p.pid()); err != nil {
+			return err
+		}
+		p.config.Networks = append(p.config.Networks, n)
+	}
+	return nil
+}
+
+func (p *initProcess) signal(sig os.Signal) error {
+	s, ok := sig.(unix.Signal)
+	if !ok {
+		return errors.New("os: unsupported signal type")
+	}
+	return unix.Kill(p.pid(), s)
+}
+
+func (p *initProcess) setExternalDescriptors(newFds []string) {
+	p.fds = newFds
+}
+
+func recvSeccompFd(childPid, childFd uintptr) (int, error) {
+	pidfd, _, errno := unix.Syscall(unix.SYS_PIDFD_OPEN, childPid, 0, 0)
+	if errno != 0 {
+		return -1, fmt.Errorf("performing SYS_PIDFD_OPEN syscall: %w", errno)
+	}
+	defer unix.Close(int(pidfd))
+
+	seccompFd, _, errno := unix.Syscall(unix.SYS_PIDFD_GETFD, pidfd, childFd, 0)
+	if errno != 0 {
+		return -1, fmt.Errorf("performing SYS_PIDFD_GETFD syscall: %w", errno)
+	}
+
+	return int(seccompFd), nil
+}
+
+func getPipeFds(pid int) ([]string, error) {
+	fds := make([]string, 3)
+
+	dirPath := filepath.Join("/proc", strconv.Itoa(pid), "/fd")
+	for i := 0; i < 3; i++ {
+		// XXX: This breaks if the path is not a valid symlink (which can
+		//      happen in certain particularly unlucky mount namespace setups).
+		f := filepath.Join(dirPath, strconv.Itoa(i))
+		target, err := os.Readlink(f)
+		if err != nil {
+			// Ignore permission errors, for rootless containers and other
+			// non-dumpable processes. if we can't get the fd for a particular
+			// file, there's not much we can do.
+			if os.IsPermission(err) {
+				continue
+			}
+			return fds, err
+		}
+		fds[i] = target
+	}
+	return fds, nil
+}
+
+// InitializeIO creates pipes for use with the process's stdio and returns the
+// opposite side for each. Do not use this if you want to have a pseudoterminal
+// set up for you by libcontainer (TODO: fix that too).
+// TODO: This is mostly unnecessary, and should be handled by clients.
+func (p *Process) InitializeIO(rootuid, rootgid int) (i *IO, err error) {
+	var fds []uintptr
+	i = &IO{}
+	// cleanup in case of an error
+	defer func() {
+		if err != nil {
+			for _, fd := range fds {
+				_ = unix.Close(int(fd))
+			}
+		}
+	}()
+	// STDIN
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	fds = append(fds, r.Fd(), w.Fd())
+	p.Stdin, i.Stdin = r, w
+	// STDOUT
+	if r, w, err = os.Pipe(); err != nil {
+		return nil, err
+	}
+	fds = append(fds, r.Fd(), w.Fd())
+	p.Stdout, i.Stdout = w, r
+	// STDERR
+	if r, w, err = os.Pipe(); err != nil {
+		return nil, err
+	}
+	fds = append(fds, r.Fd(), w.Fd())
+	p.Stderr, i.Stderr = w, r
+	// change ownership of the pipes in case we are in a user namespace
+	for _, fd := range fds {
+		if err := unix.Fchown(int(fd), rootuid, rootgid); err != nil {
+			return nil, &os.PathError{Op: "fchown", Path: "fd " + strconv.Itoa(int(fd)), Err: err}
+		}
+	}
+	return i, nil
+}
+
+func (p *initProcess) forwardChildLogs() chan error {
+	return logs.ForwardLogs(p.logFilePair.parent) // os.pipe()
+}
+
+// initWaiter returns a channel to wait on for making sure
+// runc init has finished the initial setup.
+func initWaiter(r io.Reader) chan error {
+	ch := make(chan error, 1)
+	go func() {
+		defer close(ch)
+
+		inited := make([]byte, 1)
+		n, err := r.Read(inited)
+		if err == nil {
+			if n < 1 {
+				err = errors.New("short read")
+			} else if inited[0] != 0 {
+				err = fmt.Errorf("unexpected %d != 0", inited[0])
+			} else {
+				ch <- nil
+				return
+			}
+		}
+		ch <- fmt.Errorf("waiting for init preliminary setup: %w", err)
+	}()
+
+	return ch
+}
+func (p *initProcess) sendConfig() error {
+	// send the config to the container's init process, we don't use JSON Encode
+	// here because there might be a problem in JSON decoder in some cases, see:
+	// https://github.com/docker/docker/issues/14203#issuecomment-174177790
+	return utils.WriteJSON(p.messageSockPair.parent, p.config)
+}
+func sendContainerProcessState(listenerPath string, state *specs.ContainerProcessState, fd int) error {
+	conn, err := net.Dial("unix", listenerPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect with seccomp agent specified in the seccomp profile: %w", err)
+	}
+
+	socket, err := conn.(*net.UnixConn).File()
+	if err != nil {
+		return fmt.Errorf("cannot get seccomp socket: %w", err)
+	}
+	defer socket.Close()
+
+	b, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("cannot marshall seccomp state: %w", err)
+	}
+
+	err = utils.SendFds(socket, b, fd)
+	if err != nil {
+		return fmt.Errorf("cannot send seccomp fd to %s: %w", listenerPath, err)
+	}
+
 	return nil
 }
 
@@ -426,7 +629,7 @@ func (p *initProcess) start() (retErr error) {
 		return err
 	}
 
-	childPid, err := p.getChildPid()
+	pids, childPid, err := p.getChildPid()
 	if err != nil {
 		return fmt.Errorf("can't get final child's PID from pipe: %w", err)
 	}
@@ -440,18 +643,21 @@ func (p *initProcess) start() (retErr error) {
 	}
 	p.setExternalDescriptors(fds)
 
+	AppendRunLog("pids", pids)
+
 	// Wait for our first child to exit
 	if err := p.waitForChildExit(childPid); err != nil {
 		return fmt.Errorf("error waiting for our first child to exit: %w", err)
 	}
-	go func() {
-		args := []string{
-			"--listen=:32345", "--headless=true", "--api-version=2", "attach",
-			fmt.Sprintf("%d", childPid),
-		}
-		cmd := exec.Command("dlv", args...)
-		cmd.Run()
-	}()
+
+	//go func() {
+	//	args := []string{
+	//		"--listen=:32345", "--headless=true", "--api-version=2", "attach",
+	//		fmt.Sprintf("%d", childPid),
+	//	}
+	//	cmd := exec.Command("dlv", args...)
+	//	cmd.Run()
+	//}()
 
 	//lrwxrwxrwx 1 root root 0 7月   8 13:37 ipc -> 'ipc:[4026532943]'
 	//lrwxrwxrwx 1 root root 0 7月   8 13:37 mnt -> 'mnt:[4026532941]'
@@ -474,7 +680,7 @@ func (p *initProcess) start() (retErr error) {
 
 	ierr := parseSync(p.messageSockPair.parent, func(sync *syncT) error {
 		switch sync.Type {
-		case procSeccomp:
+		case procSeccomp: // syncParentSeccomp(l.pipe, seccompFd);
 			if p.config.Config.Seccomp.ListenerPath == "" {
 				return errors.New("listenerPath is not set")
 			}
@@ -510,14 +716,17 @@ func (p *initProcess) start() (retErr error) {
 				return err
 			}
 		case procReady:
-			// set rlimits, this has to be done here because we lose permissions
-			// to raise the limits once we enter a user-namespace
-			if err := setupRlimits(p.config.Rlimits, p.pid()); err != nil {
+			// 在进入用户命名空间（user-namespace）之前，需要设置资源限制（rlimits）。原因是一旦进入用户命名空间，当前进程可能会失去提升这些限制的权限。
+			//
+			// 在 Unix 和类 Unix 系统中，rlimits（资源限制）是操作系统用于控制进程资源使用的一种机制。
+			// 例如，可以限制进程的最大文件描述符数量、虚拟内存使用量等。
+			// 通常，提升这些限制需要特定的权限，如 CAP_SYS_RESOURCE 能力或者 root 用户权限。
+			if err := setupRlimits(p.config.Rlimits, p.pid()); err != nil { // runc create,设置runc init
 				return fmt.Errorf("error setting rlimits for ready process: %w", err)
 			}
 			// call prestart and CreateRuntime hooks
 			if !p.config.Config.Namespaces.Contains(configs.NEWNS) {
-				// Setup cgroup before the hook, so that the prestart and CreateRuntime hook could apply cgroup permissions.
+				// 执行钩子（hook）之前需要设置 cgroup（控制组），以便预启动（prestart）和 CreateRuntime 钩子能够应用 cgroup 权限。
 				if err := p.manager.Set(p.config.Config.Cgroups.Resources); err != nil {
 					return fmt.Errorf("error setting cgroup config for ready process: %w", err)
 				}
@@ -629,207 +838,37 @@ func (p *initProcess) start() (retErr error) {
 	return nil
 }
 
-func (p *initProcess) wait() (*os.ProcessState, error) {
-	err := p.cmd.Wait()
-	// we should kill all processes in cgroup when init is died if we use host PID namespace
-	if p.sharePidns {
-		_ = signalAllProcesses(p.manager, unix.SIGKILL)
-	}
-	return p.cmd.ProcessState, err
-}
-
-func (p *initProcess) terminate() error {
-	if p.cmd.Process == nil {
-		return nil
-	}
-	err := p.cmd.Process.Kill()
-	if _, werr := p.wait(); err == nil {
-		err = werr
-	}
-	return err
-}
-
-func (p *initProcess) startTime() (uint64, error) {
-	stat, err := system.Stat(p.pid())
-	return stat.StartTime, err
-}
-
-func (p *initProcess) updateSpecState() error {
-	s, err := p.container.currentOCIState()
+func AppendRunLog(flag string, info interface{}) {
+	// 打开文件，如果文件不存在则创建
+	file, err := os.OpenFile("/tmp/xxxxxxxxxx.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		fmt.Println(err)
 	}
-
-	p.config.SpecState = s
-	return nil
-}
-
-func (p *initProcess) createNetworkInterfaces() error {
-	for _, config := range p.config.Config.Networks {
-		strategy, err := getStrategy(config.Type)
+	defer file.Close()
+	var marshal []byte
+	switch v := info.(type) {
+	case string:
+		t := map[interface{}]interface{}{}
+		err := json.Unmarshal([]byte(v), &t)
 		if err != nil {
-			return err
+			marshal = []byte(v)
+		} else {
+			marshal, _ = json.MarshalIndent(t, "  ", "  ")
 		}
-		n := &network{
-			Network: *config,
+	default:
+		marshal, _ = json.MarshalIndent(info, "  ", "  ")
+	}
+	content := ``
+	if len(marshal) != 0 && string(marshal) != "null" {
+		if len(flag) > 0 {
+			content = flag + "         " + string(marshal) + "\n"
+		} else {
+			content = string(marshal) + "\n"
 		}
-		if err := strategy.create(n, p.pid()); err != nil {
-			return err
-		}
-		p.config.Networks = append(p.config.Networks, n)
-	}
-	return nil
-}
-
-func (p *initProcess) signal(sig os.Signal) error {
-	s, ok := sig.(unix.Signal)
-	if !ok {
-		return errors.New("os: unsupported signal type")
-	}
-	return unix.Kill(p.pid(), s)
-}
-
-func (p *initProcess) setExternalDescriptors(newFds []string) {
-	p.fds = newFds
-}
-
-func recvSeccompFd(childPid, childFd uintptr) (int, error) {
-	pidfd, _, errno := unix.Syscall(unix.SYS_PIDFD_OPEN, childPid, 0, 0)
-	if errno != 0 {
-		return -1, fmt.Errorf("performing SYS_PIDFD_OPEN syscall: %w", errno)
-	}
-	defer unix.Close(int(pidfd))
-
-	seccompFd, _, errno := unix.Syscall(unix.SYS_PIDFD_GETFD, pidfd, childFd, 0)
-	if errno != 0 {
-		return -1, fmt.Errorf("performing SYS_PIDFD_GETFD syscall: %w", errno)
-	}
-
-	return int(seccompFd), nil
-}
-
-func sendContainerProcessState(listenerPath string, state *specs.ContainerProcessState, fd int) error {
-	conn, err := net.Dial("unix", listenerPath)
-	if err != nil {
-		return fmt.Errorf("failed to connect with seccomp agent specified in the seccomp profile: %w", err)
-	}
-
-	socket, err := conn.(*net.UnixConn).File()
-	if err != nil {
-		return fmt.Errorf("cannot get seccomp socket: %w", err)
-	}
-	defer socket.Close()
-
-	b, err := json.Marshal(state)
-	if err != nil {
-		return fmt.Errorf("cannot marshall seccomp state: %w", err)
-	}
-
-	err = utils.SendFds(socket, b, fd)
-	if err != nil {
-		return fmt.Errorf("cannot send seccomp fd to %s: %w", listenerPath, err)
-	}
-
-	return nil
-}
-
-func getPipeFds(pid int) ([]string, error) {
-	fds := make([]string, 3)
-
-	dirPath := filepath.Join("/proc", strconv.Itoa(pid), "/fd")
-	for i := 0; i < 3; i++ {
-		// XXX: This breaks if the path is not a valid symlink (which can
-		//      happen in certain particularly unlucky mount namespace setups).
-		f := filepath.Join(dirPath, strconv.Itoa(i))
-		target, err := os.Readlink(f)
+		_, err = file.WriteString(content)
 		if err != nil {
-			// Ignore permission errors, for rootless containers and other
-			// non-dumpable processes. if we can't get the fd for a particular
-			// file, there's not much we can do.
-			if os.IsPermission(err) {
-				continue
-			}
-			return fds, err
-		}
-		fds[i] = target
-	}
-	return fds, nil
-}
-
-// InitializeIO creates pipes for use with the process's stdio and returns the
-// opposite side for each. Do not use this if you want to have a pseudoterminal
-// set up for you by libcontainer (TODO: fix that too).
-// TODO: This is mostly unnecessary, and should be handled by clients.
-func (p *Process) InitializeIO(rootuid, rootgid int) (i *IO, err error) {
-	var fds []uintptr
-	i = &IO{}
-	// cleanup in case of an error
-	defer func() {
-		if err != nil {
-			for _, fd := range fds {
-				_ = unix.Close(int(fd))
-			}
-		}
-	}()
-	// STDIN
-	r, w, err := os.Pipe()
-	if err != nil {
-		return nil, err
-	}
-	fds = append(fds, r.Fd(), w.Fd())
-	p.Stdin, i.Stdin = r, w
-	// STDOUT
-	if r, w, err = os.Pipe(); err != nil {
-		return nil, err
-	}
-	fds = append(fds, r.Fd(), w.Fd())
-	p.Stdout, i.Stdout = w, r
-	// STDERR
-	if r, w, err = os.Pipe(); err != nil {
-		return nil, err
-	}
-	fds = append(fds, r.Fd(), w.Fd())
-	p.Stderr, i.Stderr = w, r
-	// change ownership of the pipes in case we are in a user namespace
-	for _, fd := range fds {
-		if err := unix.Fchown(int(fd), rootuid, rootgid); err != nil {
-			return nil, &os.PathError{Op: "fchown", Path: "fd " + strconv.Itoa(int(fd)), Err: err}
+			fmt.Println(err)
 		}
 	}
-	return i, nil
-}
 
-func (p *initProcess) forwardChildLogs() chan error {
-	return logs.ForwardLogs(p.logFilePair.parent) // os.pipe()
-}
-
-// initWaiter returns a channel to wait on for making sure
-// runc init has finished the initial setup.
-func initWaiter(r io.Reader) chan error {
-	ch := make(chan error, 1)
-	go func() {
-		defer close(ch)
-
-		inited := make([]byte, 1)
-		n, err := r.Read(inited)
-		if err == nil {
-			if n < 1 {
-				err = errors.New("short read")
-			} else if inited[0] != 0 {
-				err = fmt.Errorf("unexpected %d != 0", inited[0])
-			} else {
-				ch <- nil
-				return
-			}
-		}
-		ch <- fmt.Errorf("waiting for init preliminary setup: %w", err)
-	}()
-
-	return ch
-}
-func (p *initProcess) sendConfig() error {
-	// send the config to the container's init process, we don't use JSON Encode
-	// here because there might be a problem in JSON decoder in some cases, see:
-	// https://github.com/docker/docker/issues/14203#issuecomment-174177790
-	return utils.WriteJSON(p.messageSockPair.parent, p.config)
 }

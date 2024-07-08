@@ -1785,27 +1785,6 @@ func (c *linuxContainer) currentState() (*State, error) {
 	return state, nil
 }
 
-func (c *linuxContainer) currentOCIState() (*specs.State, error) {
-	bundle, annotations := utils.Annotations(c.config.Labels)
-	state := &specs.State{
-		Version:     specs.Version,
-		ID:          c.ID(),
-		Bundle:      bundle,
-		Annotations: annotations,
-	}
-	status, err := c.currentStatus()
-	if err != nil {
-		return nil, err
-	}
-	state.Status = specs.ContainerState(status.String())
-	if status != Stopped {
-		if c.initProcess != nil {
-			state.Pid = c.initProcess.pid()
-		}
-	}
-	return state, nil
-}
-
 // ignoreTerminateErrors returns nil if the given err matches an error known
 // to indicate that the terminate occurred successfully or err was nil, otherwise
 // err is returned unaltered.
@@ -2323,4 +2302,25 @@ func (c *linuxContainer) makeCriuRestoreMountpoints(m *configs.Mount) error {
 		}
 	}
 	return nil
+}
+
+func (c *linuxContainer) currentOCIState() (*specs.State, error) {
+	bundle, annotations := utils.Annotations(c.config.Labels)
+	state := &specs.State{
+		Version:     specs.Version,
+		ID:          c.ID(),
+		Bundle:      bundle,
+		Annotations: annotations,
+	}
+	status, err := c.currentStatus()
+	if err != nil {
+		return nil, err
+	}
+	state.Status = specs.ContainerState(status.String())
+	if status != Stopped {
+		if c.initProcess != nil {
+			state.Pid = c.initProcess.pid()
+		}
+	}
+	return state, nil
 }

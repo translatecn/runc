@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"os/exec"
 	"time"
-
-	"github.com/sirupsen/logrus"
 
 	"github.com/opencontainers/runc/libcontainer/devices"
 	"github.com/opencontainers/runtime-spec/specs-go"
@@ -274,16 +273,6 @@ type Capabilities struct {
 	Ambient []string
 }
 
-func (hooks HookList) RunHooks(state *specs.State) error {
-	for i, h := range hooks {
-		if err := h.Run(state); err != nil {
-			return fmt.Errorf("error running hook #%d: %w", i, err)
-		}
-	}
-
-	return nil
-}
-
 func (hooks *Hooks) UnmarshalJSON(b []byte) error {
 	var state map[HookName][]CommandHook
 
@@ -304,30 +293,6 @@ func (hooks *Hooks) UnmarshalJSON(b []byte) error {
 	}
 
 	return nil
-}
-
-func (hooks *Hooks) MarshalJSON() ([]byte, error) {
-	serialize := func(hooks []Hook) (serializableHooks []CommandHook) {
-		for _, hook := range hooks {
-			switch chook := hook.(type) {
-			case CommandHook:
-				serializableHooks = append(serializableHooks, chook)
-			default:
-				logrus.Warnf("cannot serialize hook of type %T, skipping", hook)
-			}
-		}
-
-		return serializableHooks
-	}
-
-	return json.Marshal(map[string]interface{}{
-		"prestart":        serialize((*hooks)[Prestart]),
-		"createRuntime":   serialize((*hooks)[CreateRuntime]),
-		"createContainer": serialize((*hooks)[CreateContainer]),
-		"startContainer":  serialize((*hooks)[StartContainer]),
-		"poststart":       serialize((*hooks)[Poststart]),
-		"poststop":        serialize((*hooks)[Poststop]),
-	})
 }
 
 type Hook interface {
@@ -356,6 +321,27 @@ type Command struct {
 	Env     []string       `json:"env"`
 	Dir     string         `json:"dir"`
 	Timeout *time.Duration `json:"timeout"`
+}
+
+// NewCommandHook will execute the provided command when the hook is run.
+func NewCommandHook(cmd Command) CommandHook {
+	return CommandHook{
+		Command: cmd,
+	}
+}
+
+type CommandHook struct {
+	Command
+}
+
+func (hooks HookList) RunHooks(state *specs.State) error {
+	for i, h := range hooks {
+		if err := h.Run(state); err != nil {
+			return fmt.Errorf("error running hook #%d: %w", i, err)
+		}
+	}
+
+	return nil
 }
 
 func (c Command) Run(s *specs.State) error {
@@ -399,13 +385,26 @@ func (c Command) Run(s *specs.State) error {
 	}
 }
 
-// NewCommandHook will execute the provided command when the hook is run.
-func NewCommandHook(cmd Command) CommandHook {
-	return CommandHook{
-		Command: cmd,
-	}
-}
+func (hooks *Hooks) MarshalJSON() ([]byte, error) {
+	serialize := func(hooks []Hook) (serializableHooks []CommandHook) {
+		for _, hook := range hooks {
+			switch chook := hook.(type) {
+			case CommandHook:
+				serializableHooks = append(serializableHooks, chook)
+			default:
+				logrus.Warnf("cannot serialize hook of type %T, skipping", hook)
+			}
+		}
 
-type CommandHook struct {
-	Command
+		return serializableHooks
+	}
+
+	return json.Marshal(map[string]interface{}{
+		"prestart":        serialize((*hooks)[Prestart]),
+		"createRuntime":   serialize((*hooks)[CreateRuntime]),
+		"createContainer": serialize((*hooks)[CreateContainer]),
+		"startContainer":  serialize((*hooks)[StartContainer]),
+		"poststart":       serialize((*hooks)[Poststart]),
+		"poststop":        serialize((*hooks)[Poststop]),
+	})
 }

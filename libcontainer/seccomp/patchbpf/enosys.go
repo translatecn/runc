@@ -1,6 +1,3 @@
-//go:build cgo && seccomp
-// +build cgo,seccomp
-
 package patchbpf
 
 import (
@@ -652,38 +649,14 @@ func filterFlags(config *configs.Seccomp, filter *libseccomp.ScmpFilter) (flags 
 	return
 }
 
-func sysSeccompSetFilter(flags uint, filter []unix.SockFilter) (fd int, err error) {
-	fprog := unix.SockFprog{
-		Len:    uint16(len(filter)),
-		Filter: &filter[0],
-	}
-	fd = -1 // only return a valid fd when C_FILTER_FLAG_NEW_LISTENER is set
-	// If no seccomp flags were requested we can use the old-school prctl(2).
-	if flags == 0 {
-		err = unix.Prctl(unix.PR_SET_SECCOMP,
-			unix.SECCOMP_MODE_FILTER,
-			uintptr(unsafe.Pointer(&fprog)), 0, 0)
-	} else {
-		fdptr, _, errno := unix.RawSyscall(unix.SYS_SECCOMP,
-			uintptr(C.C_SET_MODE_FILTER),
-			uintptr(flags), uintptr(unsafe.Pointer(&fprog)))
-		if errno != 0 {
-			err = errno
-		}
-		if flags&uint(C.C_FILTER_FLAG_NEW_LISTENER) != 0 {
-			fd = int(fdptr)
-		}
-	}
-	runtime.KeepAlive(filter)
-	runtime.KeepAlive(fprog)
-	return
-}
-
 // PatchAndLoad takes a seccomp configuration and a libseccomp filter which has
 // been pre-configured with the set of rules in the seccomp config. It then
 // patches said filter to handle -ENOSYS in a much nicer manner than the
 // default libseccomp default action behaviour, and loads the patched filter
 // into the kernel for the current process.
+// // PatchAndLoad 接受一个 seccomp 配置和一个预先配置了 seccomp 配置中规则集的 libseccomp 过滤器。
+// 然后它会修补这个过滤器，
+// 以便用比默认 libseccomp 默认操作行为更友好的方式处理 -ENOSYS，并将修补后的过滤器加载到当前进程的内核中。
 func PatchAndLoad(config *configs.Seccomp, filter *libseccomp.ScmpFilter) (int, error) {
 	// Generate a patched filter.
 	fprog, err := enosysPatchFilter(config, filter)
@@ -713,4 +686,30 @@ func PatchAndLoad(config *configs.Seccomp, filter *libseccomp.ScmpFilter) (int, 
 	}
 
 	return fd, nil
+}
+func sysSeccompSetFilter(flags uint, filter []unix.SockFilter) (fd int, err error) {
+	fprog := unix.SockFprog{
+		Len:    uint16(len(filter)),
+		Filter: &filter[0],
+	}
+	fd = -1 // only return a valid fd when C_FILTER_FLAG_NEW_LISTENER is set
+	// If no seccomp flags were requested we can use the old-school prctl(2).
+	if flags == 0 {
+		err = unix.Prctl(unix.PR_SET_SECCOMP,
+			unix.SECCOMP_MODE_FILTER,
+			uintptr(unsafe.Pointer(&fprog)), 0, 0)
+	} else {
+		fdptr, _, errno := unix.RawSyscall(unix.SYS_SECCOMP,
+			uintptr(C.C_SET_MODE_FILTER),
+			uintptr(flags), uintptr(unsafe.Pointer(&fprog)))
+		if errno != 0 {
+			err = errno
+		}
+		if flags&uint(C.C_FILTER_FLAG_NEW_LISTENER) != 0 {
+			fd = int(fdptr)
+		}
+	}
+	runtime.KeepAlive(filter)
+	runtime.KeepAlive(fprog)
+	return
 }
