@@ -143,7 +143,7 @@ func (r *runner) run(config *specs.Process) (int, error) {
 
 	switch r.action {
 	case CT_ACT_CREATE:
-		err = r.container.Start(process)
+		err = r.container.Start(process) // ✅
 	case CT_ACT_RESTORE:
 		err = r.container.Restore(process, r.criuOpts)
 	case CT_ACT_RUN:

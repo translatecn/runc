@@ -291,6 +291,34 @@ func NewgidmapPath(newgidmapPath string) func(*LinuxFactory) error {
 	}
 }
 
+// New returns a linux based container factory based in the root directory and
+// configures the factory with the provided option funcs.
+func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
+	if root != "" {
+		if err := os.MkdirAll(root, 0o700); err != nil { // /run/containerd/runc/k8s.io
+			return nil, err
+		}
+	}
+	l := &LinuxFactory{
+		Root:      root,
+		InitPath:  "/proc/self/exe", // /usr/bin/runc
+		InitArgs:  []string{os.Args[0], "init"},
+		Validator: validate.New(),
+		// https://blog.csdn.net/qq_43375973/article/details/117387384
+		CriuPath: "criu", // 保存进程状态、恢复
+	}
+
+	for _, opt := range options {
+		if opt == nil {
+			continue
+		}
+		if err := opt(l); err != nil {
+			return nil, err
+		}
+	}
+	return l, nil
+}
+
 // StartInitialization 通过从父容器打开管道fd读取配置和状态来加载容器
 // 这是 reexec 的底层实现细节，不应该被外部使用
 func (l *LinuxFactory) StartInitialization() (err error) {
@@ -373,32 +401,4 @@ func (l *LinuxFactory) StartInitialization() (err error) {
 
 	// If Init succeeds, syscall.Exec will not return, hence none of the defers will be called.
 	return i.Init()
-}
-
-// New returns a linux based container factory based in the root directory and
-// configures the factory with the provided option funcs.
-func New(root string, options ...func(*LinuxFactory) error) (Factory, error) {
-	if root != "" {
-		if err := os.MkdirAll(root, 0o700); err != nil { // /run/containerd/runc/k8s.io
-			return nil, err
-		}
-	}
-	l := &LinuxFactory{
-		Root:      root,
-		InitPath:  "/proc/self/exe", // /usr/bin/runc
-		InitArgs:  []string{os.Args[0], "init"},
-		Validator: validate.New(),
-		// https://blog.csdn.net/qq_43375973/article/details/117387384
-		CriuPath: "criu", // 保存进程状态、恢复
-	}
-
-	for _, opt := range options {
-		if opt == nil {
-			continue
-		}
-		if err := opt(l); err != nil {
-			return nil, err
-		}
-	}
-	return l, nil
 }
