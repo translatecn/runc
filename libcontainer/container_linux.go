@@ -100,15 +100,7 @@ type Container interface {
 	// Restore restores the checkpointed container to a running state using the criu(8) utility.
 	Restore(process *Process, criuOpts *CriuOpts) error
 
-	// If the Container state is RUNNING or CREATED, sets the Container state to PAUSING and pauses
-	// the execution of any user processes. Asynchronously, when the container finished being paused the
-	// state is changed to PAUSED.
-	// If the Container state is PAUSED, do nothing.
 	Pause() error
-
-	// If the Container state is PAUSED, resumes the execution of any user processes in the
-	// Container before setting the Container state to RUNNING.
-	// If the Container state is RUNNING, do nothing.
 	Resume() error
 
 	// NotifyOOM returns a read-only channel signaling when the container receives an OOM notification.
@@ -477,43 +469,6 @@ func (c *linuxContainer) Destroy() error {
 	c.m.Lock()
 	defer c.m.Unlock()
 	return c.state.destroy()
-}
-
-func (c *linuxContainer) Pause() error {
-	c.m.Lock()
-	defer c.m.Unlock()
-	status, err := c.currentStatus()
-	if err != nil {
-		return err
-	}
-	switch status {
-	case Running, Created:
-		if err := c.cgroupManager.Freeze(configs.Frozen); err != nil {
-			return err
-		}
-		return c.state.transition(&pausedState{
-			c: c,
-		})
-	}
-	return ErrNotRunning
-}
-
-func (c *linuxContainer) Resume() error {
-	c.m.Lock()
-	defer c.m.Unlock()
-	status, err := c.currentStatus()
-	if err != nil {
-		return err
-	}
-	if status != Paused {
-		return ErrNotPaused
-	}
-	if err := c.cgroupManager.Freeze(configs.Thawed); err != nil {
-		return err
-	}
-	return c.state.transition(&runningState{
-		c: c,
-	})
 }
 
 func (c *linuxContainer) NotifyOOM() (<-chan struct{}, error) {
@@ -2322,4 +2277,41 @@ func (c *linuxContainer) Processes() ([]int, error) {
 		return nil, fmt.Errorf("unable to get all container pids: %w", err)
 	}
 	return pids, nil
+}
+
+func (c *linuxContainer) Pause() error {
+	c.m.Lock()
+	defer c.m.Unlock()
+	status, err := c.currentStatus()
+	if err != nil {
+		return err
+	}
+	switch status {
+	case Running, Created:
+		if err := c.cgroupManager.Freeze(configs.Frozen); err != nil {
+			return err
+		}
+		return c.state.transition(&pausedState{
+			c: c,
+		})
+	}
+	return ErrNotRunning
+}
+
+func (c *linuxContainer) Resume() error {
+	c.m.Lock()
+	defer c.m.Unlock()
+	status, err := c.currentStatus()
+	if err != nil {
+		return err
+	}
+	if status != Paused {
+		return ErrNotPaused
+	}
+	if err := c.cgroupManager.Freeze(configs.Thawed); err != nil {
+		return err
+	}
+	return c.state.transition(&runningState{
+		c: c,
+	})
 }

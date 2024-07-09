@@ -834,6 +834,7 @@ void nsexec(void) {
 
     pipenum = getenv_int("_LIBCONTAINER_INITPIPE"); // NewSockPair      init-c 3
     if (pipenum < 0) {                              // runc start 时没有这个环境环境，在这里会直接返回
+       // fprintf(stderr, "-----------------");
         return;
     }
 

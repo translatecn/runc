@@ -43,7 +43,7 @@ type containerState struct {
 
 var ListCommand = cli.Command{
 	Name:  "list",
-	Usage: "lists containers started by runc with the given root",
+	Usage: "列出由runc启动的具有给定根的容器",
 	ArgsUsage: `
 
 Where the given root is specified via the global option "--root"
@@ -154,7 +154,7 @@ func getContainers(context *cli.Context) ([]containerState, error) {
 				fmt.Fprintf(os.Stderr, "state for %s: %v\n", item.Name(), err)
 				continue
 			}
-			pid := state.BaseState.InitProcessPid
+			pid := state.BaseState.InitProcessPid // pause和其他主 进程    sandbox container 、container
 			if containerStatus == libcontainer.Stopped {
 				pid = 0
 			}

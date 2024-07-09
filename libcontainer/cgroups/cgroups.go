@@ -10,16 +10,10 @@ type Manager interface {
 	// can be used to merely create a cgroup.
 	Apply(pid int) error
 
-	// GetPids returns the PIDs of all processes inside the cgroup.
 	GetPids() ([]int, error)
-
 	GetAllPids() ([]int, error)
-
-	// GetStats returns cgroups statistics.
 	GetStats() (*Stats, error)
-
-	// Freeze sets the freezer cgroup to the specified state.
-	Freeze(state configs.FreezerState) error
+	Freeze(state configs.FreezerState) error // 将freezer cgroup设置为指定状态。
 
 	// Destroy removes cgroup.
 	Destroy() error

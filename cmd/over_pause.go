@@ -7,7 +7,7 @@ import (
 
 var PauseCommand = cli.Command{
 	Name:  "pause",
-	Usage: "pause suspends all processes inside the container",
+	Usage: "Pause暂停容器内的所有进程",
 	ArgsUsage: `<container-id>
 
 Where "<container-id>" is the name for the instance of the container to be
@@ -36,7 +36,7 @@ Use runc list to identify instances of containers and their current status.`,
 
 var ResumeCommand = cli.Command{
 	Name:  "resume",
-	Usage: "resumes all processes that have been previously paused",
+	Usage: "恢复之前暂停的所有进程",
 	ArgsUsage: `<container-id>
 
 Where "<container-id>" is the name for the instance of the container to be

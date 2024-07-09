@@ -9,8 +9,8 @@ type FreezerState string
 
 const (
 	Undefined FreezerState = ""
-	Frozen    FreezerState = "FROZEN"
-	Thawed    FreezerState = "THAWED"
+	Frozen    FreezerState = "FROZEN" // 冻结
+	Thawed    FreezerState = "THAWED" // 解冻
 )
 
 // Cgroup holds properties of a cgroup on Linux.

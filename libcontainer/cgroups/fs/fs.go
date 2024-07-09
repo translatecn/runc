@@ -200,24 +200,6 @@ func (m *manager) Set(r *configs.Resources) error {
 	return nil
 }
 
-// Freeze toggles the container's freezer cgroup depending on the state
-// provided
-func (m *manager) Freeze(state configs.FreezerState) error {
-	path := m.Path("freezer")
-	if path == "" {
-		return errors.New("cannot toggle freezer: cgroups not configured for container")
-	}
-
-	prevState := m.cgroups.Resources.Freezer
-	m.cgroups.Resources.Freezer = state
-	freezer := &FreezerGroup{}
-	if err := freezer.Set(path, m.cgroups.Resources); err != nil {
-		m.cgroups.Resources.Freezer = prevState
-		return err
-	}
-	return nil
-}
-
 func (m *manager) GetPids() ([]int, error) {
 	return cgroups.GetPids(m.Path("devices"))
 }
@@ -262,4 +244,20 @@ func (m *manager) OOMKillCount() (uint64, error) {
 	}
 
 	return c, err
+}
+
+func (m *manager) Freeze(state configs.FreezerState) error {
+	path := m.Path("freezer")
+	if path == "" {
+		return errors.New("cannot toggle freezer: cgroups not configured for container")
+	}
+
+	prevState := m.cgroups.Resources.Freezer
+	m.cgroups.Resources.Freezer = state
+	freezer := &FreezerGroup{}
+	if err := freezer.Set(path, m.cgroups.Resources); err != nil {
+		m.cgroups.Resources.Freezer = prevState
+		return err
+	}
+	return nil
 }
