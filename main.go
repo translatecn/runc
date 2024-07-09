@@ -76,16 +76,16 @@ func main() {
 	}
 	app.Commands = []cli.Command{
 		runc.CheckpointCommand,
-		runc.CreateCommand,
-		runc.DeleteCommand,
+		runc.CreateCommand, // ✅
+		runc.DeleteCommand, // ✅
 		runc.EventsCommand,
 		runc.ExecCommand,
-		runc.KillCommand,
-		runc.ListCommand,
-		runc.PauseCommand,
-		runc.PsCommand, // ✅
+		runc.KillCommand,  // ✅
+		runc.ListCommand,  // ✅
+		runc.PauseCommand, // ✅
+		runc.PsCommand,    // ✅
 		runc.RestoreCommand,
-		runc.ResumeCommand,
+		runc.ResumeCommand, // ✅
 		runc.RunCommand,
 		runc.SpecCommand,
 		runc.StartCommand,
