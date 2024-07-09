@@ -305,14 +305,6 @@ func (m *legacyManager) GetPids() ([]int, error) {
 	return cgroups.GetPids(path)
 }
 
-func (m *legacyManager) GetAllPids() ([]int, error) {
-	path, ok := m.paths["devices"]
-	if !ok {
-		return nil, errSubsystemDoesNotExist
-	}
-	return cgroups.GetAllPids(path)
-}
-
 func (m *legacyManager) GetStats() (*cgroups.Stats, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -477,4 +469,12 @@ func (m *legacyManager) Exists() bool {
 
 func (m *legacyManager) OOMKillCount() (uint64, error) {
 	return fs.OOMKillCount(m.Path("memory"))
+}
+
+func (m *legacyManager) GetAllPids() ([]int, error) {
+	path, ok := m.paths["devices"]
+	if !ok {
+		return nil, errSubsystemDoesNotExist
+	}
+	return cgroups.GetAllPids(path)
 }

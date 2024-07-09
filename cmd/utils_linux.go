@@ -236,64 +236,6 @@ func createContainer(context *cli.Context, id string, spec *specs.Spec) (libcont
 	return factory.Create(id, config)
 }
 
-func startContainer(context *cli.Context, action CtAct, criuOpts *libcontainer.CriuOpts) (int, error) {
-	if err := revisePidFile(context); err != nil {
-		return -1, err
-	}
-	spec, err := setupSpec(context)
-	if err != nil {
-		return -1, err
-	}
-
-	id := context.Args().First()
-	if id == "" {
-		return -1, errEmptyID
-	}
-
-	notifySocket := newNotifySocket(context, os.Getenv("NOTIFY_SOCKET"), id)
-	if notifySocket != nil {
-		notifySocket.setupSpec(spec)
-	}
-
-	container, err := createContainer(context, id, spec)
-	if err != nil {
-		return -1, err
-	}
-
-	if notifySocket != nil {
-		if err := notifySocket.setupSocketDirectory(); err != nil {
-			return -1, err
-		}
-		if action == CT_ACT_RUN {
-			if err := notifySocket.bindSocket(); err != nil {
-				return -1, err
-			}
-		}
-	}
-
-	// Support on-demand socket activation by passing file descriptors into the container init process.
-	listenFDs := []*os.File{}
-	if os.Getenv("LISTEN_FDS") != "" {
-		listenFDs = activation.Files(false)
-	}
-
-	r := &runner{
-		enableSubreaper: !context.Bool("no-subreaper"),
-		shouldDestroy:   !context.Bool("keep"),
-		container:       container,
-		listenFDs:       listenFDs,
-		notifySocket:    notifySocket,
-		consoleSocket:   context.String("console-socket"),
-		detach:          context.Bool("detach"),
-		pidFile:         context.String("pid-file"),
-		preserveFDs:     context.Int("preserve-fds"),
-		action:          action,
-		criuOpts:        criuOpts,
-		init:            true,
-	}
-	return r.run(spec.Process)
-}
-
 // newProcess returns a new libcontainer Process with the arguments from the
 // spec and stdio from the current process.
 func newProcess(p specs.Process) (*libcontainer.Process, error) {
@@ -433,4 +375,62 @@ func loadFactory(context *cli.Context) (libcontainer.Factory, error) {
 		libcontainer.CriuPath(context.GlobalString("criu")),
 		libcontainer.NewuidmapPath(newuidmap),
 		libcontainer.NewgidmapPath(newgidmap))
+}
+
+func startContainer(context *cli.Context, action CtAct, criuOpts *libcontainer.CriuOpts) (int, error) {
+	if err := revisePidFile(context); err != nil {
+		return -1, err
+	}
+	spec, err := setupSpec(context)
+	if err != nil {
+		return -1, err
+	}
+
+	id := context.Args().First()
+	if id == "" {
+		return -1, errEmptyID
+	}
+
+	notifySocket := newNotifySocket(context, os.Getenv("NOTIFY_SOCKET"), id)
+	if notifySocket != nil {
+		notifySocket.setupSpec(spec)
+	}
+
+	container, err := createContainer(context, id, spec)
+	if err != nil {
+		return -1, err
+	}
+
+	if notifySocket != nil {
+		if err := notifySocket.setupSocketDirectory(); err != nil {
+			return -1, err
+		}
+		if action == CT_ACT_RUN {
+			if err := notifySocket.bindSocket(); err != nil {
+				return -1, err
+			}
+		}
+	}
+
+	// Support on-demand socket activation by passing file descriptors into the container init process.
+	listenFDs := []*os.File{}
+	if os.Getenv("LISTEN_FDS") != "" {
+		listenFDs = activation.Files(false)
+	}
+
+	r := &runner{
+		enableSubreaper: !context.Bool("no-subreaper"),
+		shouldDestroy:   !context.Bool("keep"),
+		container:       container,
+		listenFDs:       listenFDs,
+		notifySocket:    notifySocket,
+		consoleSocket:   context.String("console-socket"),
+		detach:          context.Bool("detach"),
+		pidFile:         context.String("pid-file"),
+		preserveFDs:     context.Int("preserve-fds"),
+		action:          action,
+		criuOpts:        criuOpts,
+		init:            true,
+	}
+	return r.run(spec.Process)
 }

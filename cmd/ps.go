@@ -15,7 +15,7 @@ import (
 
 var PsCommand = cli.Command{
 	Name:      "ps",
-	Usage:     "ps displays the processes running inside a container",
+	Usage:     "显示在容器内运行的进程",
 	ArgsUsage: `<container-id> [ps options]`,
 	Flags: []cli.Flag{
 		cli.StringFlag{

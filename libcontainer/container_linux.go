@@ -158,14 +158,6 @@ func (c *linuxContainer) ignoreCgroupError(err error) error {
 	return err
 }
 
-func (c *linuxContainer) Processes() ([]int, error) {
-	pids, err := c.cgroupManager.GetAllPids()
-	if err = c.ignoreCgroupError(err); err != nil {
-		return nil, fmt.Errorf("unable to get all container pids: %w", err)
-	}
-	return pids, nil
-}
-
 func (c *linuxContainer) Stats() (*Stats, error) {
 	var (
 		err   error
@@ -2323,4 +2315,11 @@ func (c *linuxContainer) currentOCIState() (*specs.State, error) {
 		}
 	}
 	return state, nil
+}
+func (c *linuxContainer) Processes() ([]int, error) {
+	pids, err := c.cgroupManager.GetAllPids()
+	if err = c.ignoreCgroupError(err); err != nil {
+		return nil, fmt.Errorf("unable to get all container pids: %w", err)
+	}
+	return pids, nil
 }

@@ -1,6 +1,5 @@
 ## 封印文件描述符
 
-- https://cloud.tencent.com/developer/article/2161414
 
 使用memfd_create(2)创建的文件描述符，默认具有F_SEAL_SEAL标记，不能再更改封印标记，
 此时，客户端进程可使用ftruncate(2)扩大或者缩小共享内存大小。为了能够封印，需要在memfd_create中使用MFD_ALLOW_SEALING标记。

@@ -12,25 +12,6 @@ import (
 )
 
 func main() {
-	if os.Getenv("_DEBUG") != "" {
-		args := []string{
-			"--root",
-			"/run/containerd/runc/k8s.io",
-			"--log",
-			"/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b4ab941d0abcae2621aa7adcab034552aaf4d23d56798b19a0edb112a97aa77/log.json",
-			"--log-format",
-			"json",
-			"--systemd-cgroup",
-			"create",
-			"--bundle",
-			"/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b4ab941d0abcae2621aa7adcab034552aaf4d23d56798b19a0edb112a97aa77",
-			"--pid-file",
-			"/run/containerd/io.containerd.runtime.v2.task/k8s.io/4b4ab941d0abcae2621aa7adcab034552aaf4d23d56798b19a0edb112a97aa77/init.pid",
-			"4b4ab941d0abcae2621aa7adcab034552aaf4d23d56798b19a0edb112a97aa77",
-		}
-		os.Args = append(os.Args, args...)
-	}
-
 	app := cli.NewApp()
 	app.Name = "runc"
 	app.Usage = runc.Usage
@@ -102,7 +83,7 @@ func main() {
 		runc.KillCommand,
 		runc.ListCommand,
 		runc.PauseCommand,
-		runc.PsCommand,
+		runc.PsCommand, // ✅
 		runc.RestoreCommand,
 		runc.ResumeCommand,
 		runc.RunCommand,

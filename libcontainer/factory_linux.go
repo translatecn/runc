@@ -148,26 +148,6 @@ func (l *LinuxFactory) Type() string {
 	return "libcontainer"
 }
 
-func (l *LinuxFactory) loadState(root string) (*State, error) {
-	stateFilePath, err := securejoin.SecureJoin(root, stateFilename)
-	if err != nil {
-		return nil, err
-	}
-	f, err := os.Open(stateFilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, ErrNotExist
-		}
-		return nil, err
-	}
-	defer f.Close()
-	var state *State
-	if err := json.NewDecoder(f).Decode(&state); err != nil {
-		return nil, err
-	}
-	return state, nil
-}
-
 func (l *LinuxFactory) validateID(id string) error {
 	if !idRegex.MatchString(id) || string(os.PathSeparator)+id != utils.CleanPath(string(os.PathSeparator)+id) {
 		return ErrInvalidID
@@ -401,4 +381,24 @@ func (l *LinuxFactory) StartInitialization() (err error) {
 
 	// If Init succeeds, syscall.Exec will not return, hence none of the defers will be called.
 	return i.Init()
+}
+
+func (l *LinuxFactory) loadState(root string) (*State, error) {
+	stateFilePath, err := securejoin.SecureJoin(root, stateFilename)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(stateFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrNotExist
+		}
+		return nil, err
+	}
+	defer f.Close()
+	var state *State
+	if err := json.NewDecoder(f).Decode(&state); err != nil {
+		return nil, err
+	}
+	return state, nil
 }

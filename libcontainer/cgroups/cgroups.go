@@ -13,8 +13,6 @@ type Manager interface {
 	// GetPids returns the PIDs of all processes inside the cgroup.
 	GetPids() ([]int, error)
 
-	// GetAllPids returns the PIDs of all processes inside the cgroup
-	// any all its sub-cgroups.
 	GetAllPids() ([]int, error)
 
 	// GetStats returns cgroups statistics.

@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 )
 
-// GetAllPids returns all pids from the cgroup identified by path, and all its
-// sub-cgroups.
 func GetAllPids(path string) ([]int, error) {
 	var pids []int
 	err := filepath.WalkDir(path, func(p string, d fs.DirEntry, iErr error) error {
